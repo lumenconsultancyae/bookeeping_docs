@@ -1,0 +1,91 @@
+<mxfile host="app.diagrams.net" modified="2026-11-02T11:55:00.000Z" agent="General chat" version="24.0.0" type="device">
+  <diagram id="system-architecture" name="System Architecture">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <!-- Container Group: Browser Client Runtime -->
+        <mxCell id="grp_browser" value="Browser Client Runtime (Lumen Accounting Suite SPA)" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="660" height="400" as="geometry" />
+        </mxCell>
+        <!-- Row 1: UI Layer -->
+        <mxCell id="ui_views" value="DOM Workspace Views &amp; Modals&#xa;(index.html / style.css)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+          <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="spa_router" value="SPA View Router&#xa;(switchView / Navigation)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+          <mxGeometry x="235" y="50" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="chart_js" value="Chart.js &amp; KPI Engine&#xa;(updateKPIs / 6M Cash Flow)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+          <mxGeometry x="450" y="50" width="190" height="70" as="geometry" />
+        </mxCell>
+        <!-- Row 2: Domain & Accounting Engines -->
+        <mxCell id="ledger_engine" value="Double-Entry &amp; Auto-JV Engine&#xa;(getHistory / renderTrialBalance)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+          <mxGeometry x="20" y="180" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tax_payroll" value="UAE Tax, WPS &amp; E-Invoice&#xa;(VAT201 / Corp Tax / SIF / XML)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+          <mxGeometry x="235" y="180" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="pdf_raster" value="PDF.js Rasterizer &amp; AI Client&#xa;(convertPdfToImage / fetch)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+          <mxGeometry x="450" y="180" width="190" height="70" as="geometry" />
+        </mxCell>
+        <!-- Row 3: Persistence Layer -->
+        <mxCell id="store_ledger" value="localStorage: Ledger &amp; COA&#xa;(bookkeeping_history_v2, coa)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+          <mxGeometry x="20" y="310" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="store_ops" value="localStorage: Directories &amp; Ops&#xa;(customers, inventory, payroll)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+          <mxGeometry x="235" y="310" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="store_config" value="localStorage: Settings &amp; Audit&#xa;(settings, rules, audit_log)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+          <mxGeometry x="450" y="310" width="190" height="70" as="geometry" />
+        </mxCell>
+        <!-- Container Group: Container & AI Infrastructure -->
+        <mxCell id="grp_infra" value="Docker Compose &amp; agy-ai Infrastructure" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="760" y="40" width="230" height="400" as="geometry" />
+        </mxCell>
+        <mxCell id="nginx_proxy" value="Nginx Reverse Proxy&#xa;(bookkeeping-web :9091)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_infra">
+          <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="agy_ai" value="agy-ai Prediction Service&#xa;(agy_service.py / agy CLI :3000)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#be185d;fontColor=#831843;fontSize=12;fontStyle=1;" vertex="1" parent="grp_infra">
+          <mxGeometry x="20" y="180" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="cf_tunnel" value="Cloudflare Tunnels&#xa;(bookkeeping-tunnel / agy-tunnel)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_infra">
+          <mxGeometry x="20" y="310" width="190" height="70" as="geometry" />
+        </mxCell>
+        <!-- Orthogonal Edges -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_browser" source="ui_views" target="spa_router">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_browser" source="spa_router" target="chart_js">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_browser" source="ui_views" target="ledger_engine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_browser" source="spa_router" target="tax_payroll">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_browser" source="chart_js" target="pdf_raster">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_browser" source="ledger_engine" target="store_ledger">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_browser" source="tax_payroll" target="store_ops">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_browser" source="pdf_raster" target="store_config">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_infra" source="nginx_proxy" target="agy_ai">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_infra" source="agy_ai" target="cf_tunnel">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="pdf_raster" target="nginx_proxy">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,14 @@
+# Python & Behave cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Test execution & runtime state artifacts
+artifacts/
+.agy_state/
+*.log
+pretty.output
+*.pem
+.env
+.env.*

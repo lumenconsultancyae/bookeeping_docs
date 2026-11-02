@@ -1,0 +1,641 @@
+# Technical Architecture & Execution Flow
+
+## 1. High-Level Architecture
+
+Lumen Accounting Suite is a browser-hosted Single-Page Application (SPA) built with vanilla HTML5, CSS3, and ES6+ JavaScript. Locally, it is served via an Nginx reverse proxy (`bookkeeping-web` on port `9091`) configured in `default.conf` with `sub_filter` runtime patches, `/__vendor__/` offline asset shims (`chart.js`, `pdf.min.js`, `fonts.css`), and `/api/` reverse-proxy forwarding (`client_max_body_size 50M`, `proxy_read_timeout 300s`) to the containerized `agy-ai` prediction service (`bookkeeping-agy-ai` on port `3000`, running `agy_service.py`). In production, the static SPA and its edge proxy (`functions/api/[[path]].js`) are deployed on **Cloudflare Pages** (`https://lumen-bookkeeping.pages.dev`), which validates the request `Origin` and `X-Lumen-Client: lumen-bookkeeping-web` header at the Cloudflare edge, injects the shared secret `X-Agy-Proxy-Secret`, and forwards `/api/v1/prediction/*` requests to the **AWS EC2** `agy-ai` stack (`i-09003c32e39617fea` in `us-east-1`, `docker-compose.prod.yml`). All transactional, master-data, and configuration state is persisted synchronously in browser `localStorage`, while document reading, visual analytics (`Chart.js`), and AI extraction requests (`fetch`) execute asynchronously on the client event loop. At read time, the ledger engine dynamically merges persisted transactions (`bookkeeping_history_v2`) with deterministically synthesized depreciation and amortization journal vouchers derived from active Fixed Assets and Accrual schedules.
+
+```mermaid
+flowchart LR
+    subgraph Browser["Browser Runtime (Client SPA)"]
+        UI["DOM Views & Modals"]
+        Router["SPA Router (switchView)"]
+        Engine["Accounting & Tax Engine"]
+        PDF["PDF / Image Reader"]
+        Chart["Chart.js Renderer"]
+        Store[("Browser localStorage")]
+    end
+
+    subgraph Edge["Cloudflare Edge (Production)"]
+        CFPages["Cloudflare Pages & Edge Function (/functions/api/[[path]].js)"]
+    end
+
+    subgraph Infra["Container Infrastructure (Local Docker / AWS EC2)"]
+        Nginx["Nginx Reverse Proxy & sub_filter (bookkeeping-web :80 / :9091)"]
+        AgyService["agy-ai Prediction Service (agy_service.py :3000)"]
+        AgyCLI["agy CLI Subprocess (Gemini 4 Argon)"]
+    end
+
+    UI --> Router
+    Router --> Engine
+    Engine <--> Store
+    Engine --> Chart
+    UI --> PDF
+    PDF -->|"POST /api/v1/prediction/* + X-Lumen-Client"| CFPages
+    CFPages -->|"Verify Origin & Client + Inject X-Agy-Proxy-Secret"| Nginx
+    Nginx -->|"Proxy /api/ & /__vendor__/"| AgyService
+    AgyService -->|"--mode accept-edits --output-format json --print"| AgyCLI
+    AgyCLI -->|"Structured JSON Extraction"| AgyService
+    AgyService -->|"Flowise-Compatible JSON Envelope"| Engine
+```
+
+---
+
+## 2. Phase-by-Phase Technical Breakdown
+
+### Phase 1: Bootstrap, Chart of Accounts Initialization & SPA Routing
+
+When `DOMContentLoaded` fires, the application initializes its global currency formatter (`window.formatCurrency`), account classification helpers, `PDF.js` worker configuration, SPA view router, and one-time data migrations:
+
+1. **Chart of Accounts (COA) Initialization**:
+   - A default `CHART_OF_ACCOUNTS` array of 36 standard accounts across 5 types (`Asset`, `Liability`, `Equity`, `Revenue`, `Expense`) is defined in memory (`1000 Cash` through `7000 Depreciation Expense`).
+   - **Persistence Override & Fallback Branching**:
+     - If `localStorage.getItem('bookkeeping_coa')` exists, `CHART_OF_ACCOUNTS` is replaced completely by the parsed JSON array.
+     - Otherwise, if `localStorage.getItem('bookkeeping_custom_accounts')` contains entries, those custom accounts are concatenated onto the default 36-account array.
+   - **Expense Account Predicate (`window.isExpenseAccount`)**:
+     - Returns `false` immediately if `accString` is falsy.
+     - Otherwise lowercases `accString` and iterates through `CHART_OF_ACCOUNTS`. If `accLower` includes the account's `code`, equals `acc.name.toLowerCase()`, or includes `acc.name.toLowerCase()`, it returns `acc.type === 'Expense'`.
+   - **Datalist Population**:
+     - `#allCoaList` is populated with `<option value="${acc.code} ${acc.name}">` for every account.
+     - `#supplierCoaList` is filtered to accounts where `acc.type === 'Expense'` or `acc.code` is in `['1300', '1400', '1410', '1420', '1600']` (Inventory, Prepaid Expenses, and Property, Plant & Equipment).
+
+2. **SPA View Router (`switchView(targetId, title)`)**:
+   - Hides all `.app-view` elements (`style.display = 'none'`), displays `#${targetId}` (`style.display = 'block'`), updates `.nav-item.active` state, and sets `#pageTitle.textContent = title`.
+   - Triggers view-specific rendering hooks based on `targetId`:
+     - `view-dashboard` $\rightarrow$ `updateKPIs()`
+     - `view-ledger` $\rightarrow$ `loadHistory()`
+     - `view-coa` $\rightarrow$ `renderCOA()`
+     - `view-trial`, `view-tax`, `view-corp-tax` $\rightarrow$ `renderTrialBalance()`
+     - `view-income-statement` $\rightarrow$ `renderIncomeStatement()`
+     - `view-balance-sheet` $\rightarrow$ `renderBalanceSheet()`
+     - `view-cashflow` $\rightarrow$ `renderCashflow()`
+     - `view-equity-statement` $\rightarrow$ `renderEquityStatement()`
+     - `view-budgeting` $\rightarrow$ `renderBudgeting()`
+     - `view-cashflow-forecast` $\rightarrow$ `renderCashflowForecast()`
+     - `view-customer` $\rightarrow$ `initCustomerForm()`
+     - `view-customer-list` $\rightarrow$ `loadCustomerDirectory()`
+     - `view-supplier-list` $\rightarrow$ `loadSupplierDirectory()`
+     - `view-employee-list` $\rightarrow$ `loadEmployeeDirectory()`
+     - `view-timesheet` $\rightarrow$ `loadSavedTimesheets()`
+     - `view-cheques` $\rightarrow$ `loadChequeRegistry()`
+     - `view-inventory` $\rightarrow$ `loadInventory()`
+     - `view-stock-ledger` $\rightarrow$ `loadStockLedger()`
+     - `view-statement` $\rightarrow$ Populates `#statementEntitySelect` with deduplicated, alphabetically sorted customer and supplier names and resets `#statementBody`.
+     - `view-bank` $\rightarrow$ Calls `window.renderBankDashboard()` and clears `#resBankDateFrom`, `#resBankDateTo`, `#resBankBalance`, and `#bankFile` (with null-safe element checks).
+     - `view-journal` $\rightarrow$ Sets `#journalDate` to today (`YYYY-MM-DD`) and clears `#journalDesc`, `#journalAmount`, `#journalDr`, `#journalCr`, `#journalRef`.
+     - `view-assets` $\rightarrow$ Calls `window.loadAssetsDirectory()`.
+
+3. **Startup Migrations & Background Timers**:
+   - `loadCompanySettings()` populates currency rates, dropdowns, and saved settings from `bookkeeping_settings`.
+   - `rebuildInventoryFromHistory()` executes once if `localStorage.getItem('inventory_rebuilt_v2')` is not set: it preserves `'Initial Stock'` movements from `bookkeeping_stock_ledger`, scans legacy `bookkeeping_history` for posted supplier inventory items (`1300`) and customer product sales, reconstructs `bookkeeping_stock_ledger` and `bookkeeping_inventory`, and sets `inventory_rebuilt_v2 = '1'`.
+   - `updateKPIs()`, `loadCustomerDirectory()`, and `loadSupplierDirectory()` run synchronously on startup.
+   - At `t + 500ms`, Quote and Purchase Order line items and history tables initialize.
+   - At `t + 1000ms`, `renderRecurringTemplates()` and `executeRecurringTransactions()` run to auto-post any recurring templates whose `nextRunDate <= today`.
+
+---
+
+### Phase 2: State Persistence, Audit Trail & Dynamic Auto-JV Synthesis
+
+```mermaid
+sequenceDiagram
+    participant Caller as UI / Report Caller
+    participant GH as getHistory()
+    participant Store as localStorage
+    participant Synth as Auto-JV Synthesizer
+
+    Caller->>GH: Request complete ledger
+    GH->>Store: getRawHistory() ('bookkeeping_history_v2')
+    GH->>Store: getAssets() ('bookkeeping_assets')
+    GH->>Synth: Generate monthly DEPR / AMRT entries up to today
+    GH->>Store: getAccruals() ('bookkeeping_accruals')
+    GH->>Synth: Generate pro-rata & capped ACCR entries up to today
+    Synth-->>GH: Ephemeral entries (isAutoGenerated: true)
+    GH-->>Caller: Combined history sorted by date DESC
+```
+
+1. **Raw vs. Synthesized Ledger State (`getRawHistory`, `getHistory`, `updateHistory`)**:
+   - `getRawHistory()` reads persisted entries from `bookkeeping_history_v2`.
+   - `getHistory()` begins with `getRawHistory()` and dynamically appends ephemeral journal entries (`isAutoGenerated: true`) for:
+     - **Fixed Assets & Prepaid Assets (`bookkeeping_assets`)**:
+       - Skips any asset missing `purchaseDate`, `initialValue`, or `years`.
+       - Computes `maxMonths = parseInt(asset.years) * 12` and `monthlyDepreciation = parseFloat(asset.initialValue) / maxMonths`.
+       - Starting from the last day of the purchase month (`new Date(purchaseDate.getFullYear(), purchaseDate.getMonth() + 1, 0)`), loops while `currentMonth <= today && monthsPassed < maxMonths`.
+       - **Account Mapping Branches**:
+         - Default fixed asset: Debit `7000 Depreciation Expense`, Credit `1650 Accumulated Depreciation`, prefix `DEPR`.
+         - If `asset.account` matches `1410` or `prepaid rent`: Debit `6400 Rent Expense`, Credit `1410 Prepaid Rent`, prefix `AMRT`.
+         - If `asset.account` matches `1420` or `prepaid software`: Debit `6200 Software & SaaS`, Credit `1420 Prepaid Software & SaaS`, prefix `AMRT`.
+         - If `asset.account` matches `1400` or `prepaid`: Debit `6000 Office Supplies`, Credit `1400 Prepaid Expenses`, prefix `AMRT`.
+     - **Accruals & Prepayments (`bookkeeping_accruals`)**:
+       - Skips any accrual missing `startDate`, `totalAmount`, or `monthlyAmortization`.
+       - Loops month-by-month from the end of `startDate`'s month while `currentMonth <= today && accumulated < totalAmount - 0.001`.
+       - **First-Month Pro-Rata Calculation (`monthIndex === 0`)**:
+         $$\text{daysActive} = \text{totalDaysInMonth} - \text{startDate.getDate()} + 1$$
+         If $\text{daysActive} < \text{totalDaysInMonth}$, then:
+         $$\text{jvAmount} = \text{monthlyAmt} \times \frac{\text{daysActive}}{\text{totalDaysInMonth}}$$
+       - **Cap Enforcement**: If `accumulated + jvAmount > totalAmount`, `jvAmount` is capped to `totalAmount - accumulated`.
+       - Emits an auto-generated `journal` entry with ID `accr_${accrual.id}_${year}_${month}` and entity name `ACCR-${id.slice(0,4)}-${monthIndex+1}`.
+   - Finally, `getHistory()` sorts all entries in descending chronological order (`new Date(b.date) - new Date(a.date)`).
+   - When `updateHistory(history)` is called to persist changes (e.g., status updates, edits, deletions), it filters out all synthesized entries (`history.filter(h => !h.isAutoGenerated)`) before writing back to `bookkeeping_history_v2` so auto-JVs are never duplicated in storage.
+
+2. **Period Locking (`isLocked(dateStr)`)**:
+   - Reads `closedDateStr` from `localStorage.getItem('bookkeeping_closed_date')`.
+   - Returns `true` if `closedDateStr` and `dateStr` are both non-empty and `new Date(dateStr) <= new Date(closedDateStr)`.
+   - Locked entries display a `🔒` icon in the General Ledger, disallow deletion (`deleteEntry`), disallow customer invoice creation (`customerInvoiceForm`), disallow manual journal posting (`journalForm`), and preserve locked records when `clearHistoryBtn` ("Clear All Data") is triggered.
+
+3. **Audit Logging (`logAuditEvent(action, module, details)`)**:
+   - Prepends an event object `{ id, timestamp, user: 'Admin User', action, module, details }` to `bookkeeping_audit_log` and immediately re-renders `#auditLogBody` if `#view-audit` is currently visible.
+
+---
+
+### Phase 3: AI Document Processing Pipeline
+
+1. **Multi-Page PDF Rasterization (`convertPdfToImage(file)`)**:
+   - Loads the PDF `ArrayBuffer` via `pdfjsLib.getDocument({ data: arrayBuffer }).promise`.
+   - Iterates through all pages (`1..pdf.numPages`), rendering each page onto an HTML5 `<canvas>` at `scale: 2.0`.
+   - Stitches all page canvases vertically onto a composite `<canvas>` (`width = maxWidth`, `height = sum(heights)`) and exports a single Base64 data URL via `finalCanvas.toDataURL('image/jpeg', 0.8)`.
+
+2. **Resilient JSON Extraction (`extractJSON` / `custExtractJSON`)**:
+   - Attempts to match a fenced block ```` ```json\n([\s\S]*?)\n``` ```` (or array boundaries `[` ... `]` for Petty Cash).
+   - Falls back to slicing from the first `{` to the last `}`.
+   - Wraps `JSON.parse()` in a `try/catch`; on parse failure, alerts the user with the raw AI text and falls back to safe default object structures instead of crashing the UI.
+
+3. **Four AI Extraction Workflows (`script.js` $\rightarrow$ Cloudflare Pages Function / `bookkeeping-web` Nginx $\rightarrow$ `agy_service.py` $\rightarrow$ `agy` CLI)**:
+   - **Multi-Layer Prediction Endpoint Security (`_verify_prediction_request_security`)**:
+     - Before parsing any request body, `agy_service.py` enforces three security gates on `POST /api/*`:
+       1. **Shared Proxy Secret (`X-Agy-Proxy-Secret`)**: When `AGY_API_SECRET` is configured (production AWS EC2), `agy_service.py` compares `X-Agy-Proxy-Secret` against `AGY_API_SECRET` via `hmac.compare_digest`. Missing or mismatched secrets raise `UnauthorizedPredictionRequestError` (`HTTP 401`, `code: "unauthorized"`).
+       2. **Application Client Handshake (`X-Lumen-Client`)**: Verifies `X-Lumen-Client == "lumen-bookkeeping-web"`, sent by all 4 `fetch(aiEndpoint, ...)` call sites in `script.js`. Missing or invalid headers raise `UnauthorizedPredictionRequestError` (`HTTP 401`, `code: "unauthorized"`).
+       3. **Origin & Referer Allowlist (`_is_allowed_origin`)**: Validates `Origin` (or `Referer` fallback) against trusted application origins (`https://lumen-bookkeeping.pages.dev`, `https://*.lumen-bookkeeping.pages.dev`, `https://bookkeeping.lumenconsultancy.net`, `http://localhost:9091`, `http://127.0.0.1:9091`, `http://bookkeeping-web`). Untrusted origins (or missing origins when `AGY_REQUIRE_ORIGIN=true`) raise `ForbiddenOriginPredictionError` (`HTTP 403`, `code: "forbidden_origin"`).
+   - **Backend `agy` Prediction Execution (`agy_service.py`)**:
+     - Validates `Content-Length` ($\le 50\text{ MB}$) and parses either `application/json` (`_parse_json_prediction_request`) or `multipart/form-data` (`_parse_multipart_form_data`).
+     - Decodes each uploaded Base64 file into an isolated per-request directory `/tmp/agy_requests/req_<uuid>/<idx>_<sanitized_name>` (`_write_uploads_to_dir` with `is_relative_to` path-traversal protection).
+     - Invokes `agy` non-interactively via `subprocess.run(..., cwd=str(req_dir))`:
+       `agy --mode accept-edits --dangerously-skip-permissions --disable-slash-commands --output-format json --model "Gemini 4 Argon (High)" --print-timeout 99999h --add-dir <req_dir> --print <prompt>`
+     - Extracts `response` and `conversation_id` from the JSON line output and returns `{"text": response, "conversation_id": conv_id, "status": status}` (or a sanitized structured error envelope `{"error": {"code": ..., "message": ...}, "text": "```json\n{}\n```"}` with HTTP `400`/`401`/`403`/`413`/`502`/`504`).
+   - **Supplier Invoice (`#processBtn`)**:
+     - Converts PDF to JPEG (or reads image as Base64), constructs a prompt containing the allowed `supplierCoaListText`, and sends `POST` JSON `{ question, uploads: [{ data, type: 'file', name, mime }] }` to `settings.flowiseEndpoint || '/api/v1/prediction/937be8b1-663e-45a5-a9d7-b5c912ac1abd'`.
+     - Extracts header fields (`date`, `invoiceNum`, `entityName`, `trn`, `address`, `phone`, `subtotal`, `discount`, `tax`, `total`, `currency`) and line items (`description`, `qty`, `unitPrice`, `amount`, `tax`, `account`, `category` $\in \{\text{OpEx}, \text{COGS}, \text{Capitalized R\&D}\}$).
+     - Performs duplicate detection against `getHistory()` before saving (`#duplicateInvoiceModal`).
+     - Upon confirmation (`#confirmSaveSupplierBtn`), converts foreign currency amounts using `getCurrencies()` exchange rates into AED, saves new suppliers to `bookkeeping_suppliers`, registers fixed assets/accruals if an asset/prepaid account (`1400`/`1410`/`1420`/`1600`) is used, logs stock `IN` movements if `1300 Inventory` is used, and saves the supplier bill to `bookkeeping_history_v2`.
+   - **Customer Invoice (`#custProcessBtn`)**:
+     - Extracts customer invoice fields and line items via the `/api/v1/prediction/*` endpoint (`agy-ai`), auto-populates `#customerInvoiceForm`, sets VAT radio toggle (`standard` if `parsed.tax > 0`, else `zero`), and recalculates totals.
+   - **Petty Cash Multi-Receipt Upload (`#btnProcessJournalFile`)**:
+     - Accepts multiple PDF/image files in `#journalFileInput`, converts each to Base64 JPEG, and sends all files in the `uploads` array in a single request.
+     - Renders an editable `#pettyCashReviewBody` table and posts each receipt as a separate journal entry crediting `1010 Petty Cash Fund` when `#btnConfirmPettyCash` is clicked.
+   - **Bank Statement Extraction & Rules Engine (`#processBankBtn`)**:
+     - Extracts raw text from PDF pages via `page.getTextContent()` (or reads plain text/CSV via `file.text()`) and sends a `FormData` payload with `question` to `/api/v1/prediction/*` (`agy-ai`).
+     - Normalizes transaction signs (`withdrawal`/`debit`/`out`/`payment` $\rightarrow$ negative; `deposit`/`credit`/`in` $\rightarrow$ positive).
+     - Evaluates each transaction description against `bookkeeping_bank_rules` (`case-insensitive substring match` on `rule.condition`): if matched, overrides the AI's suggested account and VAT rate with `rule.account` and `rule.vat`.
+     - On save (`#confirmSaveBankBtn`), creates a `1005-N` bank sub-account if the bank name is new, records the statement in `bookkeeping_bank_statements`, and either matches transactions against open invoices (updating `amountPaid`, `payments[]`, and `status` to `partial paid` or `paid`) or posts standalone bank journal entries.
+
+---
+
+### Phase 4: Commercial, Contacts & Inventory Subsystems
+
+1. **Customer & Supplier Directories**:
+   - `saveCustomer(cust, originalName)` and `saveSupplier(sup, originalName)` upsert contact records by name and refresh `#customerList`, `#supplierList`, and `#allEntitiesList` `<datalist>` elements.
+   - **Referential Integrity**: `deleteCustomer(name)` checks `getHistory().some(h => h.type === 'customer' && h.entityName === name)` and blocks deletion with an alert if any invoice is linked to that customer.
+
+2. **Inventory Directory & Stock Ledger**:
+   - **Bidirectional Pricing Math**:
+     - Editing `#invCost` or `#invMarkup` computes $\text{Price} = \text{Cost} \times (1 + \frac{\text{Markup}}{100})$.
+     - Editing `#invPrice` computes $\text{Markup} = \frac{\text{Price} - \text{Cost}}{\text{Cost}} \times 100$ (or `0` if $\text{Cost} \le 0$).
+   - **Stock Movements (`window.logStockMovement`)**:
+     - Appends a movement `{ id, date, productName, type: 'IN' | 'OUT', reference, qtyChange, unitCost, totalValue }` to `bookkeeping_stock_ledger` and adjusts `inv[existingIndex].qty += qtyChange` in `bookkeeping_inventory`.
+   - **Automatic COGS & Stock Deduction on Customer Invoice**:
+     - When a customer invoice is saved with a selected `productName` from inventory, the app logs an `'OUT'` stock movement (`-item.qty`) and posts a COGS journal entry (`5000 Cost of Goods Sold` Dr / `1300 Inventory` Cr for `item.qty * unitCost`).
+   - **Stock Reversal on Invoice Deletion**:
+     - Deleting a ledger entry (`deleteEntry(id)`) scans `bookkeeping_stock_ledger` for movements matching `entry.invoiceNum` or `Inv: ${entry.invoiceNum}`, reverses the `qtyChange` on `bookkeeping_inventory`, and removes the movement rows.
+
+3. **Quotes, Purchase Orders & Recurring Templates**:
+   - **Quotes (`bookkeeping_quotes`)**: Created in `Draft` status; `convertQuoteToInvoice(id)` transitions status to `Invoiced` and prepends an auto-generated sales invoice record to `bookkeeping_history_v2`.
+   - **Purchase Orders (`bookkeeping_pos`)**: Created in `Draft` status $\rightarrow$ `receivePOGoods(id)` transitions status to `Goods Received` $\rightarrow$ `convertPOToBill(id)` performs 3-way matching, transitions status to `Billed`, and prepends a supplier bill record to `bookkeeping_history_v2`.
+   - **Recurring Templates (`bookkeeping_recurring_v2`)**: `executeRecurringTransactions()` checks all templates where `nextRunDate <= today`, emits a `posted` Customer Invoice, Supplier Bill, or Journal Entry, and advances `nextRunDate` by 1 week, 1 month, or 1 year until `nextRunDate > today`.
+
+---
+
+### Phase 5: Payroll, Timesheets, UAE WPS & EOSB Engine
+
+1. **Net Pay Formula (`calcNetPay(empId)`)**:
+   $$\text{earnedPay} = \frac{\text{totalPay}}{30} \times \text{daysWorked}$$
+   $$\text{netPay} = \text{earnedPay} + \text{bonus} - \text{loanDed} - \text{otherDed}$$
+
+2. **Payroll Run & Multi-Journal Posting (`savePayroll()`)**:
+   - Validates that `period` is selected, employees exist, and `totalNetPay > 0`.
+   - Saves period snapshot to `localStorage.setItem('payroll_' + period, JSON.stringify({ employees, paymentAccount }))`.
+   - Posts up to 5 double-entry journal vouchers dated `${period}-28`:
+     1. **Gross Payroll**: Dr `6500 Payroll / Salaries`, Cr `2100 Accrued Liabilities` for `totalGross`.
+     2. **Net Pay Disbursement**: Dr `2100 Accrued Liabilities`, Cr `paymentAccount` for `totalNetPay`.
+     3. **Employee Loan Recovery** (if `totalLoanDed > 0`): Dr `2100 Accrued Liabilities`, Cr `1210 Employee Advances/Loans` for `totalLoanDed`.
+     4. **Other Deductions** (if `totalOtherDed > 0`): Dr `2100 Accrued Liabilities`, Cr `6500 Payroll / Salaries` for `totalOtherDed`.
+     5. **EOSB & Leave Accrual** (if `#payrollAccrueEOSB` is checked):
+        - Monthly EOSB per employee: $\frac{\text{basicSalary}}{30} \times \frac{21}{12}$ (21 days basic pay per year of service under UAE Labour Law).
+        - Monthly Leave Accrual per employee: $\frac{\text{totalFixed}}{12}$.
+        - Posts Dr `6520 EOSB & Leave Expense`, Cr `2120 Provision for EOSB` for `totalEosb + totalLeave`.
+
+3. **UAE WPS SIF Export (`generateWPS()`)**:
+   - Generates an Employee Detail Record (`EDR`) row per employee and a trailing Salary Control Record (`SCR`) summary row, triggering a browser download of `WPS_${period}.sif`.
+
+---
+
+### Phase 6: Double-Entry Financial Reporting, KPIs, FP&A & UAE Tax Compliance
+
+1. **Dashboard KPI Engine (`updateKPIs()`)**:
+   - Supports filtering by Year (`#dashboardYearFilter`) and Month (`#dashboardMonthFilter`).
+   - **P&L vs. Balance Sheet Date Scoping**:
+     - `isPlItem(date)` matches only transactions within the selected year/month.
+     - `isBsItem(date)` matches all cumulative transactions up to the end of the selected year/month.
+   - **Hero Metrics**:
+     - $\text{Avg. Monthly Burn} = \frac{\text{Expenses in last 90 days}}{3}$
+     - $\text{Cash Runway} = \text{Avg. Monthly Burn} > 0 \ ? \ \frac{\text{Current Cash}}{\text{Avg. Monthly Burn}} : 0$ (capped at `99+ mo` display)
+     - $\text{Net Profit Margin} = \text{Total Revenue} > 0 \ ? \ \frac{\text{Net Profit}}{\text{Total Revenue}} \times 100 : 0$
+   - **Actionable Hit Lists**: Populates `#criticalArList` and `#criticalApList` with the top 5 unpaid/partially paid customer and supplier invoices older than 30 days, sorted by age descending then balance descending.
+
+2. **Trial Balance, FTA VAT201 & UAE Corporate Tax (`renderTrialBalance()`)**:
+   - Aggregates debits and credits per 4-digit account code across all non-draft transactions within the selected date range:
+     - **Supplier Bills**: Debits line-item expense/asset accounts for `subtotal`, debits `1500 Input VAT` for `tax`, and credits `2000 Accounts Payable` for `total` (if manually paid without a linked payment journal, debits `2000` and credits `1005 Bank` for `manualPaid`).
+     - **Customer Invoices**: Debits `1200 Accounts Receivable` for `total`, credits `4xxx` Revenue account for `subtotal`, and credits `2500 Output VAT` for `tax` (if manually paid without a linked payment journal, credits `1200` and debits `1005 Bank`).
+     - **Journal Entries**: Debits `drAcc` and credits `crAcc`.
+   - **FTA VAT201 Return Mapping**:
+     - Box 1 & Box 8: `outputVat`
+     - Box 9 & Box 11: `inputVat`
+     - Box 12: `outputVat`, Box 13: `inputVat`
+     - Box 14 (`#vatBox14`): `netVat = outputVat - inputVat`. If `netVat >= 0`, displays `${formatCurrency(netVat)} Payable` in danger red; if `netVat < 0`, displays `${formatCurrency(Math.abs(netVat))} Refundable` in success green.
+   - **UAE Corporate Tax Calculation**:
+     - Computes $\text{Net Profit} = \sum \text{Credits}_{4\text{xxx}} - \sum \text{Debits}_{5\text{xxx}, 6\text{xxx}}$.
+     - Sums non-deductible add-backs (`ctAddBacks`) from supplier bills and `6xxx` journal entries flagged with `isCtAddBack: true`.
+     - $\text{Taxable Income} = \text{Net Profit} + \text{ctAddBacks}$.
+     - If `companyType !== 'Qualifying Free Zone'` and `!smallBusinessRelief` and $\text{Taxable Income} > 375,000$:
+       $$\text{Corporate Tax Payable} = (\text{Taxable Income} - 375,000) \times 0.09$$
+       Otherwise $\text{Corporate Tax Payable} = 0.00$.
+
+3. **Financial Statements & FP&A**:
+   - `renderIncomeStatement()`, `renderBalanceSheet()`, `renderCashflow()`, and `renderEquityStatement()` compute account balances via `getCalculatedBalances(fromD, toD)` and render structured financial statements.
+   - `renderBudgeting()` compares monthly budgets (`bookkeeping_budgets[YYYY-MM][accountCode]`) against actuals for Revenue (`4xxx`) and Expense (`5xxx–7xxx`) accounts, labeling Revenue accounts `Target Met` ($\text{Actual} \ge \text{Budget}$) or `Under Target`, and Expense accounts `Under Budget` ($\text{Actual} \le \text{Budget}$) or `Over Budget`.
+   - `renderCashflowForecast()` computes current cash across `1000`, `1005`, and `1010` and projects running cash balance across future customer invoice inflows and supplier bill outflows sorted by `dueDate`.
+
+---
+
+## 3. Payload & State Schemas
+
+### 3.1 `localStorage` Keys & Runtime Schemas
+
+#### `bookkeeping_history_v2` (Ledger Entries Array)
+```json
+[
+  {
+    "id": "1730538000000abc12",
+    "date": "2026-11-02",
+    "dueDate": "2026-11-17",
+    "type": "customer",
+    "status": "posted",
+    "invoiceNum": "INV-1001",
+    "entityName": "Acme Corp LLC",
+    "description": "Consulting Services",
+    "account": "4100 Service Revenue",
+    "bankAccount": "1005",
+    "paymentTerms": "Net 15",
+    "items": [
+      {
+        "productName": "",
+        "description": "Consulting Services",
+        "qty": 2,
+        "rate": "2500.00",
+        "amount": "5000.00"
+      }
+    ],
+    "subtotal": "5000.00",
+    "discount": "0.00",
+    "tax": "250.00",
+    "total": "5250.00",
+    "amountPaid": "2000.00",
+    "payments": [
+      {
+        "id": "journal-1730539000000xyz98",
+        "date": "2026-11-02",
+        "amount": 2000.00
+      }
+    ],
+    "isCtAddBack": false
+  }
+]
+```
+
+#### `bookkeeping_assets` & `bookkeeping_accruals`
+```json
+{
+  "bookkeeping_assets": [
+    {
+      "id": "1730538100000def34",
+      "description": "MacBook Pro M3 Max",
+      "location": "Dubai HQ",
+      "purchaseDate": "2026-01-15",
+      "initialValue": "12000.00",
+      "years": "3",
+      "account": "1600 Property, Plant & Equipment"
+    }
+  ],
+  "bookkeeping_accruals": [
+    {
+      "id": "1730538200000ghi56",
+      "startDate": "2026-01-01",
+      "description": "Annual Office Lease 2026",
+      "drAcc": "6400 Rent Expense",
+      "crAcc": "1410 Prepaid Rent",
+      "totalAmount": "120000.00",
+      "lifeMonths": "12",
+      "monthlyAmortization": "10000.00"
+    }
+  ]
+}
+```
+
+#### `bookkeeping_settings` & `bookkeeping_audit_log`
+```json
+{
+  "bookkeeping_settings": {
+    "companyName": "Lumen Books LLC",
+    "companyAddress": "DIFC, Dubai, UAE",
+    "companyTrn": "100234567890003",
+    "companyBankAccount": "1005",
+    "companyBankAccountNumber": "102930491823",
+    "companyBankIban": "AE12345678901234567890",
+    "companyBankSwift": "EBINAEAD",
+    "flowiseEndpoint": "/api/v1/prediction/937be8b1-663e-45a5-a9d7-b5c912ac1abd",
+    "companyType": "Mainland",
+    "smallBusinessRelief": false
+  },
+  "bookkeeping_audit_log": [
+    {
+      "id": "1730538300000jkl78",
+      "timestamp": "2026-11-02T09:00:00.000Z",
+      "user": "Admin User",
+      "action": "Create",
+      "module": "Transaction",
+      "details": "Saved transaction: INV-1001"
+    }
+  ]
+}
+```
+
+### 3.2 Additional `localStorage` Collection Schemas
+
+```json
+{
+  "bookkeeping_customers": [
+    {
+      "name": "Crescent Ventures LLC",
+      "trn": "100223344556603",
+      "address": "DIFC, Dubai, UAE",
+      "phone": "+971-4-300-1111",
+      "email": "ap@crescent.ae",
+      "paymentTerms": "30"
+    }
+  ],
+  "bookkeeping_suppliers": [
+    {
+      "name": "Gulf Cloud Infrastructure LLC",
+      "trn": "100998877665503",
+      "address": "Dubai Internet City, UAE",
+      "phone": "+971-4-888-1000",
+      "email": "billing@gulfcloud.ae",
+      "paymentTerms": "45"
+    }
+  ],
+  "bookkeeping_inventory": [
+    {
+      "name": "Enterprise Wi-Fi 7 Access Point",
+      "sku": "AP-WIFI7",
+      "desc": "Tri-band enterprise access point",
+      "cost": 200.00,
+      "markup": 35.0,
+      "price": 270.00,
+      "qty": 15
+    }
+  ],
+  "bookkeeping_stock_ledger": [
+    {
+      "id": "1730538400000stk01",
+      "date": "2026-10-01",
+      "productName": "Enterprise Wi-Fi 7 Access Point",
+      "type": "IN",
+      "reference": "Initial Stock",
+      "qtyChange": 15,
+      "unitCost": 200.00,
+      "totalValue": 3000.00
+    }
+  ],
+  "bookkeeping_quotes": [
+    {
+      "id": "1730538500000qt01",
+      "quoteNum": "QT-1001",
+      "date": "2026-10-12",
+      "validUntil": "2026-11-12",
+      "clientName": "Falcon FinTech PJSC",
+      "items": [{ "sku": "FW-900", "qty": 2, "price": 1500.00 }],
+      "total": 3150.00,
+      "status": "Draft"
+    }
+  ],
+  "bookkeeping_pos": [
+    {
+      "id": "1730538600000po01",
+      "poNum": "PO-1001",
+      "date": "2026-10-14",
+      "expectedDate": "2026-10-28",
+      "supplierName": "Silicon Oasis Hardware LLC",
+      "items": [{ "sku": "SRV-NVME", "qty": 4, "cost": 4000.00 }],
+      "total": 16800.00,
+      "status": "Goods Received"
+    }
+  ],
+  "bookkeeping_recurring_v2": [
+    {
+      "id": "1730538700000rec01",
+      "name": "Monthly Data Center Colocation",
+      "type": "Bill",
+      "frequency": "monthly",
+      "entity": "Etisalat Digital",
+      "amount": 4500.00,
+      "drAcc": "6100 Utilities",
+      "crAcc": "2000 Accounts Payable",
+      "nextRunDate": "2026-12-01"
+    }
+  ],
+  "bookkeeping_employees": [
+    {
+      "empId": "EMP-001",
+      "name": "Tariq Al Mansoori",
+      "position": "Principal Systems Architect",
+      "joinDate": "2024-01-15",
+      "basicSalary": "15000.00",
+      "allowance": "5000.00",
+      "totalPay": "20000.00",
+      "routingCode": "302620122",
+      "iban": "AE070331234567890123456"
+    }
+  ],
+  "payroll_2026-10": {
+    "paymentAccount": "1100 Bank Account",
+    "employees": {
+      "EMP-001": {
+        "name": "Tariq Al Mansoori",
+        "basic": "15,000.00",
+        "allowance": "5,000.00",
+        "totalFixed": "20,000.00",
+        "days": "30",
+        "bonus": "0",
+        "loan": "0",
+        "other": "0",
+        "net": "20,000.00"
+      }
+    }
+  },
+  "bookkeeping_bank_rules": [
+    {
+      "id": "1730538800000rul01",
+      "name": "DEWA Auto Rule",
+      "condition": "DEWA",
+      "account": "6100 Utilities",
+      "vat": "5"
+    }
+  ],
+  "bookkeeping_bank_statements": [
+    {
+      "id": "1730538900000bnk01",
+      "bankName": "Emirates NBD",
+      "accountNumber": "1029384756",
+      "closingBalance": "14550.00",
+      "dateSaved": "2026-10-20"
+    }
+  ],
+  "bookkeeping_cheques": [
+    {
+      "id": "1730539000000chq01",
+      "chequeNumber": "CHQ-7701",
+      "date": "2026-10-15",
+      "payee": "Al Futtaim Logistics",
+      "amount": "3250.00",
+      "bankAccount": "1100 Bank Account",
+      "status": "Issued"
+    }
+  ],
+  "bookkeeping_budgets": {
+    "2026-08": {
+      "6000": 2000.00
+    }
+  }
+}
+```
+
+### 3.3 PEPPOL BIS Billing 3.0 / UBL 2.1 XML E-Invoice Schema (`generateEInvoiceXML`)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+    <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID>
+    <cbc:ID>INV-1001</cbc:ID>
+    <cbc:IssueDate>2026-11-02</cbc:IssueDate>
+    <cbc:InvoiceTypeCode>388</cbc:InvoiceTypeCode>
+    <cbc:DocumentCurrencyCode>AED</cbc:DocumentCurrencyCode>
+    <cac:AccountingSupplierParty>
+        <cac:Party>
+            <cac:PartyName>
+                <cbc:Name>Lumen Books LLC</cbc:Name>
+            </cac:PartyName>
+            <cac:PostalAddress>
+                <cbc:StreetName>DIFC, Dubai, UAE</cbc:StreetName>
+                <cbc:Country>
+                    <cbc:IdentificationCode>AE</cbc:IdentificationCode>
+                </cbc:Country>
+            </cac:PostalAddress>
+            <cac:PartyTaxScheme>
+                <cbc:CompanyID>100234567890003</cbc:CompanyID>
+                <cac:TaxScheme>
+                    <cbc:ID>VAT</cbc:ID>
+                </cac:TaxScheme>
+            </cac:PartyTaxScheme>
+        </cac:Party>
+    </cac:AccountingSupplierParty>
+    <cac:AccountingCustomerParty>
+        <cac:Party>
+            <cac:PartyName>
+                <cbc:Name>Acme Corp LLC</cbc:Name>
+            </cac:PartyName>
+            <cac:PostalAddress>
+                <cbc:StreetName>Business Bay, Dubai, UAE</cbc:StreetName>
+                <cbc:Country>
+                    <cbc:IdentificationCode>AE</cbc:IdentificationCode>
+                </cbc:Country>
+            </cac:PostalAddress>
+            <cac:PartyTaxScheme>
+                <cbc:CompanyID>100445566778803</cbc:CompanyID>
+                <cac:TaxScheme>
+                    <cbc:ID>VAT</cbc:ID>
+                </cac:TaxScheme>
+            </cac:PartyTaxScheme>
+        </cac:Party>
+    </cac:AccountingCustomerParty>
+    <cac:LegalMonetaryTotal>
+        <cbc:LineExtensionAmount currencyID="AED">5000.00</cbc:LineExtensionAmount>
+        <cbc:TaxExclusiveAmount currencyID="AED">5000.00</cbc:TaxExclusiveAmount>
+        <cbc:TaxInclusiveAmount currencyID="AED">5250.00</cbc:TaxInclusiveAmount>
+        <cbc:PayableAmount currencyID="AED">5250.00</cbc:PayableAmount>
+    </cac:LegalMonetaryTotal>
+    <cac:InvoiceLine>
+        <cbc:ID>1</cbc:ID>
+        <cbc:InvoicedQuantity unitCode="EA">2</cbc:InvoicedQuantity>
+        <cbc:LineExtensionAmount currencyID="AED">5000.00</cbc:LineExtensionAmount>
+        <cac:Item>
+            <cbc:Name>Consulting Services</cbc:Name>
+        </cac:Item>
+        <cac:Price>
+            <cbc:PriceAmount currencyID="AED">2500.00</cbc:PriceAmount>
+        </cac:Price>
+    </cac:InvoiceLine>
+</Invoice>
+```
+
+### 3.4 UAE WPS `.sif` (`EDR` / `SCR`) Export Format (`generateWPS`)
+
+```text
+EDR,EMP-001,302620122,AE070331234567890123456,,,30,15000.00,0.00,0,0.00
+SCR,,,,,,1,20000.00
+```
+
+### 3.5 `agy-ai` Prediction Request & Response Schema (`agy_service.py`)
+
+#### Request Payload (`POST /api/v1/prediction/937be8b1-663e-45a5-a9d7-b5c912ac1abd`)
+```json
+{
+  "question": "You are an expert AI accountant processing a SUPPLIER INVOICE (Accounts Payable)...",
+  "uploads": [
+    {
+      "data": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD...",
+      "type": "file",
+      "name": "supplier_invoice.pdf.jpg",
+      "mime": "image/jpeg"
+    }
+  ]
+}
+```
+
+#### Expected AI Success Response Envelope (`HTTP 200`)
+```json
+{
+  "text": "```json\n{\n  \"date\": \"2026-10-15\",\n  \"invoiceNum\": \"SUP-AI-8001\",\n  \"entityName\": \"Gulf Cloud Infrastructure LLC\",\n  \"trn\": \"100998877665503\",\n  \"address\": \"Dubai Internet City, UAE\",\n  \"phone\": \"\",\n  \"items\": [\n    {\n      \"description\": \"Managed Cloud Compute Cluster\",\n      \"qty\": 1,\n      \"unitPrice\": 2000,\n      \"amount\": 2000,\n      \"tax\": 100,\n      \"account\": \"6200 Software & SaaS\",\n      \"category\": \"COGS\"\n    }\n  ],\n  \"subtotal\": 2000,\n  \"discount\": 0,\n  \"tax\": 100,\n  \"total\": 2100,\n  \"currency\": \"AED\"\n}\n```",
+  "conversation_id": "b9c90af2-4bf8-494e-ac9e-59571dbb06b7",
+  "status": "SUCCESS"
+}
+```
+
+#### Structured Error Response Envelope (`HTTP 400 / 401 / 403 / 404 / 413 / 502 / 504`)
+```json
+{
+  "error": {
+    "code": "unauthorized",
+    "message": "Unauthorized: prediction endpoint is restricted to the Lumen Bookkeeping application."
+  },
+  "text": "```json\n{}\n```"
+}
+```

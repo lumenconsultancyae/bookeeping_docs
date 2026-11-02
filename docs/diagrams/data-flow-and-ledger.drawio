@@ -1,0 +1,89 @@
+<mxfile host="app.diagrams.net" modified="2026-11-02T11:55:00.000Z" agent="General chat" version="24.0.0" type="device">
+  <diagram id="data-flow-and-ledger" name="Data Flow and Ledger Synthesis">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <!-- Group 1: Transaction Sources -->
+        <mxCell id="grp_inputs" value="Transaction &amp; Schedule Sources" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="230" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="src_invoices" value="Sales Invoices &amp; Quotes&#xa;(type: customer)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
+          <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="src_bills" value="Supplier Bills &amp; POs&#xa;(type: supplier)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
+          <mxGeometry x="20" y="150" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="src_journals" value="Manual, Payroll &amp; Bank JVs&#xa;(type: journal / bank)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
+          <mxGeometry x="20" y="250" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="src_schedules" value="Fixed Assets &amp; Accruals&#xa;(DEPR / AMRT / ACCR)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
+          <mxGeometry x="20" y="350" width="190" height="70" as="geometry" />
+        </mxCell>
+        <!-- Group 2: Core Ledger Synthesis -->
+        <mxCell id="grp_core" value="Ledger &amp; Balance Engine" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="340" y="40" width="230" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="raw_history" value="Persisted History Store&#xa;(getRawHistory / updateHistory)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_core">
+          <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="merged_history" value="Merged Ledger Stream&#xa;(getHistory + Auto-JVs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_core">
+          <mxGeometry x="20" y="150" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="calc_balances" value="Account Balance Aggregator&#xa;(getCalculatedBalances)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_core">
+          <mxGeometry x="20" y="250" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="audit_store" value="Audit Trail &amp; Period Lock&#xa;(logAuditEvent / isLocked)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_core">
+          <mxGeometry x="20" y="350" width="190" height="70" as="geometry" />
+        </mxCell>
+        <!-- Group 3: Downstream Outputs -->
+        <mxCell id="grp_outputs" value="Financial Statements &amp; Compliance" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="640" y="40" width="230" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="out_kpis" value="Executive KPIs &amp; SOA&#xa;(Runway / Burn / AR / AP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
+          <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="out_tax" value="FTA VAT201 &amp; Corporate Tax&#xa;(Boxes 1-14 / 9% Threshold)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#be185d;fontColor=#831843;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
+          <mxGeometry x="20" y="150" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="out_reports" value="P&amp;L, Balance Sheet, Cash Flow&#xa;&amp; FP&amp;A Variance Reports" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
+          <mxGeometry x="20" y="250" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="out_exports" value="PEPPOL XML &amp; WPS SIF Exports&#xa;(generateEInvoiceXML / WPS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#be185d;fontColor=#831843;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
+          <mxGeometry x="20" y="350" width="190" height="70" as="geometry" />
+        </mxCell>
+        <!-- Orthogonal Edges (Aligned Row-by-Row) -->
+        <mxCell id="f1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="src_invoices" target="raw_history">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="src_bills" target="merged_history">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="src_journals" target="calc_balances">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_core" source="raw_history" target="merged_history">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="src_schedules" target="audit_store">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;" edge="1" parent="grp_core" source="merged_history" target="calc_balances">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="raw_history" target="out_kpis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="merged_history" target="out_tax">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="calc_balances" target="out_reports">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;strokeWidth=1.5;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="audit_store" target="out_exports">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
