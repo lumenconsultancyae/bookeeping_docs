@@ -1,0 +1,44 @@
+services:
+  bookkeeping-app:
+    image: nginx:alpine
+    container_name: bookkeeping-web
+    ports:
+      - "80:80"
+      - "9091:80"
+
+    volumes:
+      - ${HOST_APP_DIR:-../bookkeeping-tool}:/usr/share/nginx/html:ro
+      - ./default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - agy-ai
+    restart: unless-stopped
+
+  agy-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.agy
+    image: bookkeeping-agy-ai:prod
+    container_name: bookkeeping-agy-ai
+    command: python3 /app/agy_service.py
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - AGY_HOST=0.0.0.0
+      - AGY_PORT=3000
+      - AGY_MODEL=${AGY_MODEL:-Gemini 4 Argon (High)}
+      - AGY_API_SECRET=${AGY_API_SECRET:-}
+      - AGY_REQUIRE_ORIGIN=${AGY_REQUIRE_ORIGIN:-true}
+      - AGY_ALLOWED_ORIGINS=${AGY_ALLOWED_ORIGINS:-https://bookeeping.lumenconsultancy.net,https://bookkeeping.lumenconsultancy.net,https://lumen-bookkeeping.pages.dev,http://localhost:9091,http://127.0.0.1:9091,http://bookkeeping-web}
+    volumes:
+      - ./agy_service.py:/app/agy_service.py:ro
+      - ${AGY_STATE_DIR:-./.agy_state}/gemini:/root/.gemini
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: bookkeeping-cloudflared
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - bookkeeping-app
+      - agy-ai
+    restart: unless-stopped
