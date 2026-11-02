@@ -1,0 +1,133 @@
+"""Page Object for Employee Directory, Timesheet & WPS Payroll, EOSB, and Fixed Assets."""
+
+from __future__ import annotations
+
+from selenium.webdriver.common.by import By
+
+from features.pages.base_page import BasePage
+
+
+class PayrollAndAssetsPage(BasePage):
+    """UI adapter for `#view-employee-list`, `#view-timesheet`, and `#view-assets`."""
+
+    # --- Employee Directory (`#view-employee-list`) ---
+
+    def add_employee(
+        self,
+        name: str,
+        position: str,
+        date_hired: str,
+        labour_card: str,
+        iban: str,
+        routing_code: str,
+        basic_salary: str,
+        housing_allowance: str,
+        telephone_allowance: str = "0",
+        other_allowance: str = "0",
+    ) -> None:
+        """Open `#addEmployeeModal`, populate employee details, and submit `#addEmployeeForm`."""
+        self.driver.execute_script("window.openAddEmployeeModal();")
+        self.wait_until(lambda d: d.find_element(By.ID, "addEmployeeModal").is_displayed())
+        self.fill_input("dirEmpName", name)
+        self.fill_input("dirEmpPosition", position)
+        self.fill_input("dirEmpDate", date_hired)
+        self.fill_input("dirEmpLabourCard", labour_card)
+        self.fill_input("dirEmpIban", iban)
+        self.fill_input("dirEmpRouting", routing_code)
+        self.fill_input("dirEmpBasic", basic_salary)
+        self.fill_input("dirEmpHousing", housing_allowance)
+        self.fill_input("dirEmpTelephone", telephone_allowance)
+        self.fill_input("dirEmpAllowance", other_allowance)
+        self.driver.execute_script(
+            "document.getElementById('addEmployeeForm').requestSubmit();"
+        )
+        self.accept_alert_if_present(timeout=1.5)
+        self.wait_until(
+            lambda d: not d.find_element(By.ID, "addEmployeeModal").is_displayed()
+        )
+
+    def get_employee_directory_text(self) -> str:
+        """Return the text of `#dirEmpBody`."""
+        return self.get_text_by_id("dirEmpBody")
+
+    # --- Timesheet, WPS & EOSB (`#view-timesheet`) ---
+
+    def get_eosb_summary_text(self) -> str:
+        """Return the text of `#eosbSummaryContainer`."""
+        self.driver.execute_script(
+            "if (typeof window.renderEOSBSummary === 'function') window.renderEOSBSummary();"
+        )
+        return self.get_text_by_id("eosbSummaryContainer")
+
+    def process_and_save_payroll(
+        self,
+        pay_period_yyyy_mm: str,
+        payment_account: str = "1100 Bank Account",
+        accrue_eosb: bool = True,
+    ) -> str | None:
+        """Open the Timesheet modal, configure pay period and account, and click Save Payroll."""
+        self.driver.execute_script("window.openTimesheetModal();")
+        self.wait_until(lambda d: d.find_element(By.ID, "timesheetModal").is_displayed())
+        self.fill_input("timesheetPeriod", pay_period_yyyy_mm)
+        self.select_by_value_or_text("payrollPaymentAccount", payment_account)
+        self.driver.execute_script(
+            """
+            const cb = document.getElementById('payrollAccrueEOSB');
+            if (cb) cb.checked = Boolean(arguments[0]);
+            if (typeof window.loadTimesheet === 'function') window.loadTimesheet();
+            """,
+            accrue_eosb,
+        )
+        self.driver.execute_script("window.savePayroll();")
+        alert_text = self.accept_alert_if_present(timeout=3.0)
+        self.fill_input("filterTimesheetMonth", pay_period_yyyy_mm)
+        self.driver.execute_script(
+            "if (typeof window.loadSavedTimesheets === 'function') window.loadSavedTimesheets();"
+        )
+        return alert_text
+
+    def get_saved_timesheets_text(self) -> str:
+        """Return the text of `#savedTimesheetsContainer`."""
+        return self.get_text_by_id("savedTimesheetsContainer")
+
+    # --- Fixed Assets (`#view-assets`) ---
+
+    def register_fixed_asset_and_render(
+        self,
+        description: str,
+        location: str,
+        purchase_date: str,
+        initial_value: float,
+        years: int,
+    ) -> None:
+        """Add a Fixed Asset record and refresh the Fixed Assets Directory."""
+        self.driver.execute_script(
+            """
+            const assets = JSON.parse(localStorage.getItem('bookkeeping_assets') || '[]');
+            const val = Number(arguments[3]);
+            const yrs = Number(arguments[4]);
+            assets.push({
+                id: String(Date.now()),
+                description: arguments[0],
+                location: arguments[1],
+                purchaseDate: arguments[2],
+                initialValue: val,
+                years: yrs,
+                monthlyDepr: val / (yrs * 12)
+            });
+            localStorage.setItem('bookkeeping_assets', JSON.stringify(assets));
+            if (typeof window.loadAssetsDirectory === 'function') window.loadAssetsDirectory();
+            """,
+            description,
+            location,
+            purchase_date,
+            initial_value,
+            years,
+        )
+
+    def get_assets_directory_text(self) -> str:
+        """Return the text of `#assetsDirectoryBody`."""
+        self.driver.execute_script(
+            "if (typeof window.loadAssetsDirectory === 'function') window.loadAssetsDirectory();"
+        )
+        return self.get_text_by_id("assetsDirectoryBody")

@@ -1,0 +1,377 @@
+"""Base Page Object encapsulating atomic explicit waits, navigation, alerts, and teardown."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, Callable
+from selenium.common.exceptions import (
+    NoAlertPresentException,
+    NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+    UnexpectedAlertPresentException,
+)
+from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.support.ui import Select, WebDriverWait
+
+from features.config import DEFAULT_TIMEOUT_SECONDS, POLL_FREQUENCY_SECONDS, SCREENSHOTS_DIR
+
+
+class BasePage:
+    """Driver-agnostic base adapter with retry-aware wait predicates and teardown helpers."""
+
+    MODAL_IDS = (
+        "duplicateInvoiceModal",
+        "invoiceModal",
+        "editLedgerModal",
+        "editAssetModal",
+        "editAccrualModal",
+        "matchPaymentModal",
+        "matchInvoiceToPaymentModal",
+        "expenseBreakdownModal",
+        "accrualScheduleModal",
+        "bankLedgerModal",
+        "timesheetModal",
+        "coaModal",
+        "addEmployeeModal",
+        "bankRuleModal",
+    )
+
+    VIEW_TARGET_MAP = {
+        "Dashboard": "view-dashboard",
+        "Banking": "view-bank",
+        "Cheque Registry": "view-cheques",
+        "Quotes & Estimates": "view-quotes",
+        "Sales Invoices": "view-customer",
+        "Purchase Orders": "view-po",
+        "Supplier Bills": "view-supplier",
+        "Chart of Accounts": "view-coa",
+        "Journal Entries": "view-journal",
+        "General Ledger": "view-ledger",
+        "SOA": "view-statement",
+        "Statement of Account": "view-statement",
+        "Accruals": "view-accrual",
+        "Recurring Transactions": "view-recurring",
+        "Customers": "view-customer-list",
+        "Suppliers": "view-supplier-list",
+        "Inventory Directory": "view-inventory",
+        "Stock Ledger": "view-stock-ledger",
+        "Assets Directory": "view-assets",
+        "Employee details": "view-employee-list",
+        "Timesheet & WPS": "view-timesheet",
+        "VAT": "view-tax",
+        "Tax Reports": "view-tax",
+        "Corporate Tax": "view-corp-tax",
+        "Budgeting vs. Actuals": "view-budgeting",
+        "Cash Flow Forecast": "view-cashflow-forecast",
+        "Profit & Loss": "view-income-statement",
+        "Balance Sheet": "view-balance-sheet",
+        "Cash Flow": "view-cashflow",
+        "Trial Balance": "view-trial",
+        "Audit Log": "view-audit",
+        "Settings": "view-settings",
+    }
+
+    def __init__(self, driver: WebDriver, base_url: str) -> None:
+        self.driver = driver
+        self.base_url = base_url
+
+    def wait_until(
+        self,
+        predicate: Callable[[WebDriver], Any],
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    ) -> Any:
+        """Execute an atomic predicate inside a retry-aware WebDriverWait."""
+        wait = WebDriverWait(
+            self.driver,
+            timeout,
+            poll_frequency=POLL_FREQUENCY_SECONDS,
+            ignored_exceptions=(NoSuchElementException, StaleElementReferenceException),
+        )
+        return wait.until(predicate)
+
+    def open_application(self) -> None:
+        """Navigate to the application root and wait for initialization."""
+        self.driver.get(self.base_url)
+        self.wait_until(
+            lambda d: d.execute_script("return document.readyState === 'complete'")
+        )
+        self.wait_until(
+            lambda d: d.find_element(By.ID, "view-dashboard").is_displayed()
+        )
+        self.collect_severe_console_logs()
+
+    def navigate_to_view(self, view_label: str) -> str:
+        """Click the sidebar navigation link for `view_label` and wait for its view container."""
+        target_id = self.VIEW_TARGET_MAP.get(view_label, view_label)
+
+        def _click_and_verify(d: WebDriver) -> bool:
+            nav_el = d.find_element(By.CSS_SELECTOR, f'.nav-item[data-target="{target_id}"]')
+            d.execute_script("arguments[0].click();", nav_el)
+            view_el = d.find_element(By.ID, target_id)
+            return view_el.is_displayed()
+
+        self.wait_until(_click_and_verify)
+        if target_id == "view-audit":
+            self.driver.execute_script(
+                "if (typeof window.renderAuditLog === 'function') window.renderAuditLog();"
+            )
+        return target_id
+
+    def get_active_page_title(self) -> str:
+        """Return the text of `#pageTitle`."""
+        return self.wait_until(
+            lambda d: d.find_element(By.ID, "pageTitle").text.strip()
+        )
+
+    def is_view_displayed(self, view_id: str) -> bool:
+        """Return True when `#<view_id>` is visible."""
+        return bool(
+            self.wait_until(lambda d: d.find_element(By.ID, view_id).is_displayed())
+        )
+
+    def fill_input(self, element_id: str, value: str) -> None:
+        """Clear and populate an input element by ID."""
+        def _fill(d: WebDriver) -> bool:
+            el = d.find_element(By.ID, element_id)
+            if el.get_attribute("type") in ("date", "month"):
+                d.execute_script(
+                    "arguments[0].value = arguments[1];"
+                    "arguments[0].dispatchEvent(new Event('input', {bubbles: true}));"
+                    "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));",
+                    el,
+                    str(value),
+                )
+            else:
+                d.execute_script("arguments[0].removeAttribute('list');", el)
+                el.clear()
+                el.send_keys(str(value))
+                d.execute_script(
+                    "arguments[0].dispatchEvent(new Event('input', {bubbles: true}));"
+                    "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));",
+                    el,
+                )
+            return True
+
+        self.wait_until(_fill)
+
+    def select_by_value_or_text(self, element_id: str, option_text_or_value: str) -> None:
+        """Select a `<select>` option by visible text or value attribute."""
+        def _select(d: WebDriver) -> bool:
+            el = d.find_element(By.ID, element_id)
+            sel = Select(el)
+            for opt in sel.options:
+                if opt.get_attribute("value") == option_text_or_value or opt.text.strip() == option_text_or_value:
+                    sel.select_by_visible_text(opt.text)
+                    d.execute_script(
+                        "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));",
+                        el,
+                    )
+                    return True
+            return False
+
+        self.wait_until(_select)
+
+    def click_id(self, element_id: str) -> None:
+        """Click an element by ID using atomic lookup."""
+        def _click(d: WebDriver) -> bool:
+            el = d.find_element(By.ID, element_id)
+            d.execute_script("arguments[0].click();", el)
+            return True
+
+        self.wait_until(_click)
+
+    def get_text_by_id(self, element_id: str) -> str:
+        """Return stripped text content of an element by ID."""
+        return self.wait_until(
+            lambda d: (d.find_element(By.ID, element_id).text.strip(),)
+        )[0]
+
+    def get_value_by_id(self, element_id: str) -> str:
+        """Return the `.value` attribute of an input/select element by ID."""
+        return self.wait_until(
+            lambda d: ((d.find_element(By.ID, element_id).get_attribute("value") or "").strip(),)
+        )[0]
+
+    def post_latest_ledger_entry(self) -> None:
+        """Transition the most recently saved ledger entry to 'posted' status via `handleLedgerAction`."""
+        self.driver.execute_script(
+            """
+            const raw = localStorage.getItem('bookkeeping_history_v2');
+            if (!raw) return;
+            const history = JSON.parse(raw);
+            if (Array.isArray(history) && history.length > 0) {
+                const latest = history[0];
+                if (latest && latest.id && typeof window.handleLedgerAction === 'function') {
+                    window.handleLedgerAction(latest.id, 'post');
+                }
+            }
+            """
+        )
+
+    def accept_alert_if_present(self, timeout: float = 3.0) -> str | None:
+        """Wait briefly for native browser alert/confirm dialog(s), accept all in sequence, and return the last text."""
+        last_text: str | None = None
+        current_timeout = timeout
+        while True:
+            try:
+                alert = WebDriverWait(self.driver, current_timeout, poll_frequency=0.05).until(
+                    lambda d: d.switch_to.alert
+                )
+                last_text = alert.text
+                alert.accept()
+                current_timeout = 0.4
+            except (TimeoutException, NoAlertPresentException):
+                break
+        return last_text
+
+    def dismiss_any_alert(self) -> None:
+        """Idempotently accept any open browser alert or confirmation dialog(s)."""
+        for _ in range(3):
+            try:
+                alert = self.driver.switch_to.alert
+                alert.accept()
+            except NoAlertPresentException:
+                break
+
+    def dismiss_modals_if_present(self) -> None:
+        """Idempotently close any visible modal overlay without failing if already closed."""
+        self.dismiss_any_alert()
+        for modal_id in self.MODAL_IDS:
+            try:
+                el = self.driver.find_element(By.ID, modal_id)
+                if el.is_displayed():
+                    self.driver.execute_script("arguments[0].style.display = 'none';", el)
+            except Exception:
+                continue
+
+    def capture_step_screenshot(self, name: str) -> Path:
+        """Save a stepwise verification screenshot under `SCREENSHOTS_DIR`."""
+        self.dismiss_any_alert()
+        SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        path = SCREENSHOTS_DIR / f"{name}.png"
+        self.driver.save_screenshot(str(path))
+        return path
+
+    def collect_severe_console_logs(self) -> list[dict[str, Any]]:
+        """Return any SEVERE browser console error logs."""
+        try:
+            logs = self.driver.get_log("browser")
+        except Exception:
+            return []
+        severe = []
+        for entry in logs:
+            if entry.get("level") == "SEVERE":
+                msg = entry.get("message", "")
+                if "favicon.ico" in msg:
+                    continue
+                severe.append(entry)
+        return severe
+
+    def check_dom_integrity(self) -> dict[str, Any]:
+        """Inspect live DOM for unresolved template placeholders or duplicate element IDs."""
+        self.dismiss_any_alert()
+        return self.driver.execute_script(
+            """
+            const bodyText = document.body ? document.body.innerText : '';
+            const hasUnresolvedTemplate = /\\$\\{[^}]+\\}|\\{\\{[^}]+\\}\\}/.test(bodyText);
+            const allIds = Array.from(document.querySelectorAll('[id]')).map(el => el.id).filter(Boolean);
+            const seen = new Set();
+            const duplicateIds = [];
+            for (const id of allIds) {
+                if (seen.has(id)) duplicateIds.push(id);
+                seen.add(id);
+            }
+            return {
+                hasUnresolvedTemplate,
+                duplicateIds
+            };
+            """
+        )
+
+    def cleanup_created_resources(self, created_resources: list[tuple[str, str]]) -> None:
+        """Delete only the test-created resources recorded in `created_resources`."""
+        if not created_resources:
+            return
+        self.dismiss_any_alert()
+        payload = json.dumps(created_resources)
+        self.driver.execute_script(
+            """
+            const resources = JSON.parse(arguments[0]);
+            const removeFromKey = (storageKey, predicate) => {
+                const raw = localStorage.getItem(storageKey);
+                if (!raw) return;
+                try {
+                    const arr = JSON.parse(raw);
+                    if (Array.isArray(arr)) {
+                        const filtered = arr.filter(item => !predicate(item));
+                        localStorage.setItem(storageKey, JSON.stringify(filtered));
+                    }
+                } catch (e) {}
+            };
+
+            for (const [kind, identifier] of resources) {
+                if (kind === 'customer') {
+                    removeFromKey('bookkeeping_customers', c => c.name === identifier);
+                } else if (kind === 'supplier') {
+                    removeFromKey('bookkeeping_suppliers', s => s.name === identifier);
+                } else if (kind === 'inventory') {
+                    removeFromKey('bookkeeping_inventory', i => i.name === identifier);
+                    removeFromKey('bookkeeping_stock_ledger', l => l.productName === identifier);
+                } else if (kind === 'employee') {
+                    removeFromKey('bookkeeping_employees', e => e.name === identifier);
+                } else if (kind === 'cheque') {
+                    removeFromKey('bookkeeping_cheques', c => c.chequeNumber === identifier);
+                } else if (kind === 'coa') {
+                    removeFromKey('bookkeeping_coa', a => a.code === identifier);
+                    removeFromKey('bookkeeping_custom_accounts', a => a.code === identifier);
+                } else if (kind === 'ledger') {
+                    removeFromKey('bookkeeping_history_v2', h =>
+                        h.invoiceNum === identifier ||
+                        h.entityName === identifier ||
+                        h.description === identifier ||
+                        (h.description && h.description.includes(identifier))
+                    );
+                } else if (kind === 'asset') {
+                    removeFromKey('bookkeeping_assets', a => a.description === identifier);
+                } else if (kind === 'accrual') {
+                    removeFromKey('bookkeeping_accruals', a => a.description === identifier);
+                } else if (kind === 'bank_rule') {
+                    removeFromKey('bookkeeping_bank_rules', r => r.name === identifier);
+                } else if (kind === 'bank_statement') {
+                    removeFromKey('bookkeeping_bank_statements', s => s.accountNumber === identifier || s.bankName === identifier);
+                } else if (kind === 'quote') {
+                    removeFromKey('bookkeeping_quotes', q => q.quoteNum === identifier);
+                } else if (kind === 'po') {
+                    removeFromKey('bookkeeping_pos', p => p.poNum === identifier);
+                } else if (kind === 'recurring') {
+                    removeFromKey('bookkeeping_recurring_v2', r => r.name === identifier);
+                } else if (kind === 'currency') {
+                    removeFromKey('bookkeeping_currencies', c => c.code === identifier);
+                } else if (kind === 'payroll') {
+                    localStorage.removeItem('payroll_' + identifier);
+                } else if (kind === 'closed_date') {
+                    localStorage.removeItem('bookkeeping_closed_date');
+                } else if (kind === 'budget') {
+                    const rawBudgets = localStorage.getItem('bookkeeping_budgets');
+                    if (rawBudgets) {
+                        try {
+                            const budgetsObj = JSON.parse(rawBudgets);
+                            if (budgetsObj && typeof budgetsObj === 'object') {
+                                delete budgetsObj[identifier];
+                                localStorage.setItem('bookkeeping_budgets', JSON.stringify(budgetsObj));
+                            }
+                        } catch (e) {}
+                    }
+                } else if (kind === 'settings') {
+                    localStorage.removeItem('bookkeeping_settings');
+                    localStorage.removeItem('erp_settings');
+                } else if (kind === 'bank_feeds') {
+                    localStorage.removeItem('bookkeeping_bank_feeds');
+                }
+            }
+            """,
+            payload,
+        )
