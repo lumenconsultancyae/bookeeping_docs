@@ -33,3 +33,18 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     And the user selects the dashboard period year "all" and month "all"
     And the user opens the Total Expenses Breakdown modal
     Then the Total Expenses Breakdown modal should show a non-zero total
+
+  @smoke @auth
+  Scenario: Unauthenticated visitors are redirected to /welcome to register and can sign out and sign back in
+    When an unauthenticated visitor opens the application root
+    Then the browser should redirect to the "/welcome" entrypoint
+    When the visitor registers company "Lumen Advisory" with password "Lumen2026" on the "premium" plan
+    Then the dashboard page title should be "Dashboard"
+    And the topbar should display the signed-in user email
+    When the user signs out from the application topbar
+    Then the browser should redirect to the "/welcome" entrypoint
+    When the visitor attempts to sign in with password "WrongPassword1"
+    Then the sign-in modal should display the error "Incorrect email or password."
+    When the visitor attempts to sign in with password "Lumen2026"
+    Then the dashboard page title should be "Dashboard"
+    And the topbar should display the signed-in user email

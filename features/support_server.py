@@ -262,12 +262,15 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
         return  # Silence per-request stdout noise during BDD test runs
 
     def _send_bytes(self, content: bytes, content_type: str, status: int = 200) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(content)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(content)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(content)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
@@ -297,6 +300,16 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
             html = html.replace(
                 "https://cdn.jsdelivr.net/npm/chart.js",
                 "/__vendor__/chart.js",
+            )
+            self._send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
+            return
+
+        if req_path in ("/welcome", "/welcome.html"):
+            welcome_file = APP_SOURCE_DIR / "welcome.html"
+            html = welcome_file.read_text(encoding="utf-8")
+            html = html.replace(
+                "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap",
+                "/__vendor__/fonts.css",
             )
             self._send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
             return

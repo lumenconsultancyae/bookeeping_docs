@@ -61,7 +61,8 @@ def before_all(context) -> None:
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     context.server = None if USING_DOCKER_COMPOSE else start_background_server(HOST, PORT)
 
-    with urllib.request.urlopen(BASE_URL, timeout=5) as resp:
+    req = urllib.request.Request(BASE_URL, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/130.0.0.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
         if resp.status != 200:
             raise RuntimeError(f"Pre-flight health check failed on {BASE_URL}: HTTP {resp.status}")
 

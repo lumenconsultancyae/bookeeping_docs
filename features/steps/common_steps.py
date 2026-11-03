@@ -60,3 +60,59 @@ def step_verify_dom_integrity(context) -> None:
     assert not report["duplicateIds"], (
         f"Found duplicate element IDs in live DOM: {report['duplicateIds']}"
     )
+
+
+@when("an unauthenticated visitor opens the application root")
+def step_open_unauthenticated_root(context) -> None:
+    context.redirected_url = context.base_page.open_unauthenticated_root()
+
+
+@then('the browser should redirect to the "{expected_path}" entrypoint')
+def step_verify_redirect_to_welcome(context, expected_path: str) -> None:
+    current_url = context.driver.current_url
+    assert expected_path in current_url, (
+        f"Expected browser URL to contain '{expected_path}', got '{current_url}'"
+    )
+
+
+@when('the visitor registers company "{company_prefix}" with password "{password}" on the "{plan_id}" plan')
+def step_register_company_on_welcome(
+    context, company_prefix: str, password: str, plan_id: str
+) -> None:
+    company_name = f"{company_prefix} {context.scenario_uid}"
+    email = f"founder.{context.scenario_uid}@lumenconsultancy.net"
+    context.registered_company_name = company_name
+    context.registered_email = email
+    context.registered_password = password
+    context.base_page.register_account_on_welcome(
+        company_name=company_name,
+        email=email,
+        password=password,
+        plan_id=plan_id,
+    )
+
+
+@then("the topbar should display the signed-in user email")
+def step_verify_topbar_user_email(context) -> None:
+    displayed = context.base_page.get_topbar_user_name()
+    assert displayed == context.registered_email, (
+        f"Expected topbar user name '{context.registered_email}', got '{displayed}'"
+    )
+
+
+@when("the user signs out from the application topbar")
+def step_sign_out_from_topbar(context) -> None:
+    context.base_page.sign_out_from_topbar()
+
+
+@when('the visitor attempts to sign in with password "{password}"')
+def step_attempt_sign_in(context, password: str) -> None:
+    context.base_page.submit_sign_in_on_welcome(context.registered_email, password)
+
+
+@then('the sign-in modal should display the error "{expected_error}"')
+def step_verify_sign_in_error(context, expected_error: str) -> None:
+    actual = context.base_page.get_sign_in_error_text()
+    assert actual == expected_error, (
+        f"Expected sign-in error '{expected_error}', got '{actual}'"
+    )

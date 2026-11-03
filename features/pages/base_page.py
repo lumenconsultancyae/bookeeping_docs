@@ -98,10 +98,95 @@ class BasePage:
         self.wait_until(
             lambda d: d.execute_script("return document.readyState === 'complete'")
         )
+        if self.driver.execute_script(
+            "return Boolean(window.LumenProfiles && !window.LumenProfiles.isAuthenticated());"
+        ):
+            self.driver.execute_script(
+                "window.LumenProfiles.signIn(window.LumenProfiles.OWNER_ACCOUNT);"
+            )
+            self.driver.get(self.base_url)
+            self.wait_until(
+                lambda d: d.execute_script("return document.readyState === 'complete'")
+            )
         self.wait_until(
             lambda d: d.find_element(By.ID, "view-dashboard").is_displayed()
         )
         self.collect_severe_console_logs()
+
+    def open_unauthenticated_root(self) -> str:
+        """Sign out any active session, open `/`, and wait for redirect to `/welcome`."""
+        self.driver.get(f"{self.base_url}/welcome")
+        self.wait_until(
+            lambda d: d.execute_script("return document.readyState === 'complete'")
+        )
+        self.driver.execute_script(
+            "if (window.LumenProfiles) window.LumenProfiles.signOut();"
+        )
+        self.driver.get(self.base_url)
+        self.wait_until(
+            lambda d: "/welcome" in d.current_url
+            and d.execute_script("return document.readyState === 'complete'")
+            and d.find_element(By.ID, "btnOpenSignIn").is_displayed()
+        )
+        self.collect_severe_console_logs()
+        return self.driver.current_url
+
+    def register_account_on_welcome(
+        self,
+        *,
+        company_name: str,
+        email: str,
+        password: str,
+        plan_id: str = "premium",
+    ) -> None:
+        """Register a new company profile and account from the `/welcome` page."""
+        self.click_id(f"btnChoose-{plan_id}")
+        self.wait_until(lambda d: d.find_element(By.ID, "setupModal").is_displayed())
+        self.fill_input("setupCompanyName", company_name)
+        self.fill_input("setupEmail", email)
+        self.fill_input("setupPassword", password)
+        self.fill_input("setupPasswordConfirm", password)
+        self.click_id("btnSetupSubmit")
+        self.wait_until(
+            lambda d: d.find_element(By.ID, "view-dashboard").is_displayed()
+        )
+        self.collect_severe_console_logs()
+
+    def sign_out_from_topbar(self) -> str:
+        """Click `#btnTopbarSignOut` and wait for redirect to `/welcome`."""
+        self.click_id("btnTopbarSignOut")
+        self.wait_until(
+            lambda d: "/welcome" in d.current_url
+            and d.find_element(By.ID, "btnOpenSignIn").is_displayed()
+        )
+        self.collect_severe_console_logs()
+        return self.driver.current_url
+
+    def submit_sign_in_on_welcome(self, email: str, password: str) -> None:
+        """Open the Sign-in modal on `/welcome` if hidden and submit credentials."""
+        def _ensure_modal_open(d: WebDriver) -> bool:
+            modal = d.find_element(By.ID, "signInModal")
+            if not modal.is_displayed():
+                btn = d.find_element(By.ID, "btnOpenSignIn")
+                d.execute_script("arguments[0].click();", btn)
+            return modal.is_displayed()
+
+        self.wait_until(_ensure_modal_open)
+        self.fill_input("signInEmail", email)
+        self.fill_input("signInPassword", password)
+        self.click_id("btnSignInSubmit")
+
+    def get_sign_in_error_text(self) -> str:
+        """Return the validation/authentication error message inside `#signInError`."""
+        return self.wait_until(
+            lambda d: d.find_element(By.ID, "signInError").text.strip()
+        )
+
+    def get_topbar_user_name(self) -> str:
+        """Return the displayed `.user-profile .user-name` text."""
+        return self.wait_until(
+            lambda d: d.find_element(By.CSS_SELECTOR, ".user-profile .user-name").text.strip()
+        )
 
     def navigate_to_view(self, view_label: str) -> str:
         """Click the sidebar navigation link for `view_label` and wait for its view container."""
@@ -136,7 +221,7 @@ class BasePage:
         """Clear and populate an input element by ID."""
         def _fill(d: WebDriver) -> bool:
             el = d.find_element(By.ID, element_id)
-            if el.get_attribute("type") in ("date", "month"):
+            if el.get_attribute("type") in ("date", "month") or el.get_attribute("readonly"):
                 d.execute_script(
                     "arguments[0].value = arguments[1];"
                     "arguments[0].dispatchEvent(new Event('input', {bubbles: true}));"

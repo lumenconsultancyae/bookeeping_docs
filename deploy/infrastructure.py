@@ -134,6 +134,7 @@ class CloudflareApiClient:
                 "Authorization": f"Bearer {self._api_token}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                "User-Agent": "wrangler/3.114.17",
             },
         )
         try:
