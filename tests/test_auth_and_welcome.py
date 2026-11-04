@@ -143,5 +143,225 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
         self.assertIn('[dir="rtl"]', i18n_css)
 
 
+class BehavioralAuthTenantAndEdgeProxyTests(unittest.TestCase):
+    """Execute `plan-access.js`, `profiles-storage.js`, `auth.js`, and `functions/api/[[path]].js` in Node.js."""
+
+    def test_multi_tenant_isolation_privilege_escalation_guards_and_edge_proxy_in_node(self) -> None:
+        import json
+        import subprocess
+
+        node_script = r"""
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const appDir = process.env.APP_DIR;
+
+// 1. Setup simulated browser Storage & DOM
+const backing = new Map();
+class FakeStorage {
+    getItem(k) { return backing.has(k) ? backing.get(k) : null; }
+    setItem(k, v) { backing.set(k, String(v)); }
+    removeItem(k) { backing.delete(k); }
+    key(i) { return Array.from(backing.keys())[i] || null; }
+    get length() { return backing.size; }
+}
+const store = new FakeStorage();
+global.Storage = FakeStorage;
+global.localStorage = store;
+global.window = {
+    localStorage: store,
+    location: { pathname: '/welcome', search: '', href: '/welcome', replace: (u) => { global.window.location.href = u; } },
+    dispatchEvent: () => {}
+};
+global.CustomEvent = class CustomEvent { constructor(name, opts) { this.name = name; this.detail = opts && opts.detail; } };
+
+const planAccess = require(path.join(appDir, 'plan-access.js'));
+assert.strictEqual(planAccess.normalizePlan('free'), 'basic');
+assert.strictEqual(planAccess.normalizePlan('trial'), 'basic');
+assert.strictEqual(planAccess.normalizePlan('pro'), 'advance');
+assert.strictEqual(planAccess.normalizePlan('enterprise'), 'premium');
+
+const Profiles = require(path.join(appDir, 'profiles-storage.js'));
+const Auth = require(path.join(appDir, 'auth.js'));
+
+// Unauthenticated visitor must NOT get owner profile or owner data
+assert.strictEqual(Profiles.isAuthenticated(), false);
+store.setItem('bookkeeping_history_v2', JSON.stringify([{ id: 'unauth-leak' }]));
+assert(backing.has('profile:unauthenticated::bookkeeping_history_v2'));
+assert(!backing.has('bookkeeping_history_v2'));
+
+(async () => {
+    // Register a non-owner tenant account
+    const reg = await Auth.register({
+        email: 'Tenant1@Example.com',
+        companyName: 'Tenant One LLC',
+        planId: 'basic',
+        password: 'StrongPassword!123'
+    });
+    assert.strictEqual(reg.ok, true);
+    assert.strictEqual(Profiles.isAuthenticated(), true);
+    assert.strictEqual(Profiles.isOwner(), false);
+    assert.strictEqual(Profiles.getPlan(), 'basic');
+
+    // Non-owner must NOT be able to escalate plan via setPlan()
+    const escalated = Profiles.setPlan('premium');
+    assert.strictEqual(escalated, false);
+    assert.strictEqual(Profiles.getPlan(), 'basic');
+
+    // Non-owner must NOT be able to call owner-only admin functions
+    assert.deepStrictEqual(Profiles.listAllAccounts(), []);
+    assert.strictEqual(Profiles.updateAccountAdmin(reg.accountId, { plan: 'premium' }), false);
+    assert.strictEqual(Profiles.approvePlanRequest(reg.accountId, 'advance'), false);
+    assert.strictEqual(Profiles.impersonateAccount('owner'), false);
+
+    // Non-owner tenant data is isolated under its own profile prefix
+    store.setItem('bookkeeping_history_v2', JSON.stringify([{ id: 'tenant-1-inv' }]));
+    assert.strictEqual(backing.has('bookkeeping_history_v2'), false);
+
+    // Validate sign-in password verification
+    const badLogin = await Auth.signIn('tenant1@example.com', 'WrongPass');
+    assert.strictEqual(badLogin, false);
+    const goodLogin = await Auth.signIn('  TENANT1@example.com ', 'StrongPassword!123');
+    assert.strictEqual(goodLogin, true);
+
+    // Owner sign-in can mutate plan & approve requests
+    Profiles.requestPlanUpgrade('advance', 'monthly');
+    const adminSignedIn = await Auth.signInAdmin('admin@lumenconsultancy.net', 'LumenAdmin2026');
+    assert.strictEqual(adminSignedIn, true);
+    assert.strictEqual(Profiles.isOwner(), true);
+    assert.strictEqual(Profiles.listAllAccounts().length >= 1, true);
+    const approved = Profiles.approvePlanRequest(reg.accountId, 'advance');
+    assert.strictEqual(approved, true);
+    const updatedTenant = Profiles.findAccountByEmail('tenant1@example.com');
+    assert.strictEqual(updatedTenant.plan, 'advance');
+
+    // 2. Test Cloudflare Pages Edge Function (functions/api/[[path]].js)
+    const edgeSrc = fs.readFileSync(path.join(appDir, 'functions', 'api', '[[path]].js'), 'utf8')
+        .replace(/export\s+async\s+function\s+onRequest/g, 'async function onRequest')
+        + '\nmodule.exports = { onRequest };';
+    const edgeMod = { exports: {} };
+    let lastFetched = null;
+    let shouldThrowFetch = false;
+    const edgeSandbox = {
+        module: edgeMod,
+        exports: edgeMod.exports,
+        URL,
+        Headers,
+        Response,
+        fetch: async (url, init) => {
+            if (shouldThrowFetch) throw new Error('ECONNREFUSED');
+            lastFetched = { url, init };
+            return new Response(JSON.stringify({ text: 'ok' }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+    };
+    vm.runInNewContext(edgeSrc, edgeSandbox);
+    const { onRequest } = edgeMod.exports;
+
+    // 405 on DELETE
+    const res405 = await onRequest({
+        request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/prediction/1', { method: 'DELETE' }),
+        env: { AGY_BACKEND_URL: 'https://backend.example.com' }
+    });
+    assert.strictEqual(res405.status, 405);
+
+    // 401 on GET without X-Lumen-Client
+    const res401Get = await onRequest({
+        request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/ping', { method: 'GET' }),
+        env: { AGY_BACKEND_URL: 'https://backend.example.com' }
+    });
+    assert.strictEqual(res401Get.status, 401);
+
+    // 403 on untrusted Origin
+    const res403 = await onRequest({
+        request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/prediction/1', {
+            method: 'POST',
+            headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://evil.example.com' },
+            body: '{}'
+        }),
+        env: { AGY_BACKEND_URL: 'https://backend.example.com' }
+    });
+    assert.strictEqual(res403.status, 403);
+
+    // 503 when AGY_BACKEND_URL is not configured (fail closed, no plain-HTTP EC2 fallback)
+    const res503 = await onRequest({
+        request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/prediction/1', {
+            method: 'POST',
+            headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' },
+            body: '{}'
+        }),
+        env: {}
+    });
+    assert.strictEqual(res503.status, 503);
+
+    // 502 when upstream fetch throws
+    shouldThrowFetch = true;
+    const res502 = await onRequest({
+        request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/prediction/1', {
+            method: 'POST',
+            headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' },
+            body: '{}'
+        }),
+        env: { AGY_BACKEND_URL: 'https://backend.example.com', AGY_API_SECRET: 'sec-123' }
+    });
+    assert.strictEqual(res502.status, 502);
+
+    // 200 when valid and injects X-Agy-Proxy-Secret
+    shouldThrowFetch = false;
+    const res200 = await onRequest({
+        request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/prediction/1', {
+            method: 'POST',
+            headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' },
+            body: '{"question":"hi"}'
+        }),
+        env: { AGY_BACKEND_URL: 'https://backend.example.com', AGY_API_SECRET: 'sec-123' }
+    });
+    assert.strictEqual(res200.status, 200);
+    assert.strictEqual(lastFetched.init.headers.get('X-Agy-Proxy-Secret'), 'sec-123');
+
+    // 3. Test plan-gating.js canOpen enforcement for basic vs advance/premium screens
+    await Auth.signIn('tenant1@example.com', 'StrongPassword!123');
+    Profiles.updateAccountAdmin(reg.accountId, { plan: 'basic' });
+    await Auth.signInAdmin('admin@lumenconsultancy.net', 'LumenAdmin2026');
+    Profiles.updateAccountAdmin(reg.accountId, { plan: 'basic' });
+    await Auth.signIn('tenant1@example.com', 'StrongPassword!123');
+    assert.strictEqual(Profiles.getPlan(), 'basic');
+    const PlanGate = require(path.join(appDir, 'plan-gating.js'));
+    assert.strictEqual(PlanGate.canOpen('view-dashboard'), true);
+    assert.strictEqual(PlanGate.canOpen('view-audit'), false);
+    assert.strictEqual(PlanGate.canOpen('view-equity-statement'), false);
+    assert.strictEqual(PlanGate.canOpen('view-tax'), false);
+
+    console.log(JSON.stringify({ status: 'ok' }));
+})().catch((err) => {
+    console.error(err);
+    process.exit(1);
+});
+"""
+        proc = subprocess.run(
+            ["node", "-e", node_script],
+            env={"PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin", "APP_DIR": str(APP_DIR)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload["status"], "ok")
+
+        # 4. Verify switchView in script.js enforces .app-view validation & LumenPlanGate.canOpen, and docs parity
+        script_js = (APP_DIR / "script.js").read_text(encoding="utf-8")
+        self.assertIn("targetEl.classList.contains('app-view')", script_js)
+        self.assertIn("window.LumenPlanGate.canOpen(targetId)", script_js)
+
+        for doc_rel in ("docs/product/prd-product-requirements.md", "docs/product/user-guide-and-release-notes.md"):
+            doc_text = (REPO_ROOT / doc_rel).read_text(encoding="utf-8")
+            self.assertIn("Corporate Tax Only (0% VAT)", doc_text)
+            self.assertIn("PBKDF2-SHA256 (120,000 iterations)", doc_text)
+
+
 if __name__ == "__main__":
     unittest.main()

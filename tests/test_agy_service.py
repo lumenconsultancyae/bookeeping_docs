@@ -486,6 +486,95 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
         body = json.loads(raw_resp)
         self.assertEqual(body["error"]["code"], "prediction_timeout")
 
+    @patch("agy_service.subprocess.run")
+    def test_options_cors_get_vendor_404_multipart_post_and_500_error_branches(self, mock_run: MagicMock) -> None:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["agy"],
+            returncode=0,
+            stdout="Plain text stdout fallback",
+            stderr="",
+        )
+        # 1. OPTIONS preflight with allowed origin -> 200
+        req_opt_ok = urllib.request.Request(
+            f"{self.base_url}/api/v1/prediction/test",
+            headers={"Origin": "http://localhost:9091"},
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(req_opt_ok, timeout=5) as resp:
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(resp.headers.get("Access-Control-Allow-Origin"), "http://localhost:9091")
+
+        # 2. OPTIONS preflight with untrusted origin -> 403
+        req_opt_bad = urllib.request.Request(
+            f"{self.base_url}/api/v1/prediction/test",
+            headers={"Origin": "https://attacker.example.com"},
+            method="OPTIONS",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as opt_ctx:
+            urllib.request.urlopen(req_opt_bad, timeout=5)
+        self.assertEqual(opt_ctx.exception.code, 403)
+
+        # 3. GET /__vendor__/pdf.min.js, /__vendor__/fonts.css, /api/v1/ping, and 404
+        for path in ("/__vendor__/pdf.min.js", "/__vendor__/fonts.css", "/api/v1/ping"):
+            with urllib.request.urlopen(f"{self.base_url}{path}", timeout=5) as resp:
+                self.assertEqual(resp.status, 200)
+
+        with self.assertRaises(urllib.error.HTTPError) as get_404:
+            urllib.request.urlopen(f"{self.base_url}/does-not-exist", timeout=5)
+        self.assertEqual(get_404.exception.code, 404)
+
+        # 4. POST to non-/api/ path -> 404
+        req_post_404 = urllib.request.Request(
+            f"{self.base_url}/unknown",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as post_404:
+            urllib.request.urlopen(req_post_404, timeout=5)
+        self.assertEqual(post_404.exception.code, 404)
+
+        # 5. POST multipart/form-data -> 200 (also exercises non-JSON stdout fallback in run_agy_prediction)
+        boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        mp_body = (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="question"\r\n\r\n'
+            "Hello conversational prompt\r\n"
+            f"--{boundary}--\r\n"
+        ).encode("utf-8")
+        req_mp = urllib.request.Request(
+            f"{self.base_url}/api/v1/prediction/test",
+            data=mp_body,
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "X-Lumen-Client": "lumen-bookkeeping-web",
+                "Origin": "http://localhost:9091",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req_mp, timeout=5) as resp_mp:
+            self.assertEqual(resp_mp.status, 200)
+            data_mp = json.loads(resp_mp.read().decode("utf-8"))
+            self.assertEqual(data_mp["text"], "Plain text stdout fallback")
+
+        # 6. Unexpected exception in run_agy_prediction -> 500 internal_error
+        mock_run.side_effect = RuntimeError("unexpected boom")
+        req_500 = urllib.request.Request(
+            f"{self.base_url}/api/v1/prediction/test",
+            data=b'{"question": "extract json"}',
+            headers={
+                "Content-Type": "application/json",
+                "X-Lumen-Client": "lumen-bookkeeping-web",
+                "Origin": "http://localhost:9091",
+            },
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as ctx_500:
+            urllib.request.urlopen(req_500, timeout=5)
+        self.assertEqual(ctx_500.exception.code, 500)
+        body_500 = json.loads(ctx_500.exception.read().decode("utf-8"))
+        self.assertEqual(body_500["error"]["code"], "internal_error")
+
 
 if __name__ == "__main__":
     unittest.main()

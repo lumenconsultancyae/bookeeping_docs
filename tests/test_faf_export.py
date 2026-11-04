@@ -325,6 +325,218 @@ class PrepaidCreditsAndDrawdownUnitTests(unittest.TestCase):
         ):
             self.assertIn(symbol, script_js)
 
+        arch_doc = (REPO_ROOT / "docs" / "technical" / "architecture-and-execution-flow.md").read_text(encoding="utf-8")
+        sdd_doc = (REPO_ROOT / "docs" / "technical" / "sdd-system-design.md").read_text(encoding="utf-8")
+        drawio_doc = (REPO_ROOT / "docs" / "diagrams" / "data-flow-and-ledger.drawio").read_text(encoding="utf-8")
+        self.assertIn("resolvePrepaidExpenseAccount", arch_doc)
+        self.assertIn("5000 Cost of Goods Sold", arch_doc)
+        self.assertIn("scheduleMode", arch_doc)
+        self.assertIn("usageEntries", arch_doc)
+        self.assertIn("5000 COGS", drawio_doc)
+        for stale in ("posting-repair.js", "recognitionMethod", "drawdownHistory", "bookkeeping_expenses_v1", "#processExpenseBtn"):
+            self.assertNotIn(stale, arch_doc)
+            self.assertNotIn(stale, sdd_doc)
+
+
+class BehavioralTaxAndAccountingJsExecutionTests(unittest.TestCase):
+    """Execute VAT201, FTAAuditFile, TaxCreditNotes, EInvoiceAE, and PO/Quote preview modules in Node.js."""
+
+    def test_vat201_faf_credit_notes_einvoice_and_previews_execute_behaviorally_in_node(self) -> None:
+        import json
+        import subprocess
+
+        node_script = r"""
+const assert = require('assert');
+const path = require('path');
+const appDir = process.env.APP_DIR;
+
+const store = {};
+global.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; }
+};
+global.window = {
+    localStorage: global.localStorage,
+    formatCurrency: (n) => Number(n || 0).toFixed(2)
+};
+
+const VAT201 = require(path.join(appDir, 'vat201.js'));
+const FTAAuditFile = require(path.join(appDir, 'faf-export.js'));
+const TaxCreditNotes = require(path.join(appDir, 'credit-notes.js'));
+const EInvoiceAE = require(path.join(appDir, 'einvoice-ae.js'));
+const POPreview = require(path.join(appDir, 'po-preview.js'));
+const QuotePreview = require(path.join(appDir, 'quote-preview.js'));
+const POReceiving = require(path.join(appDir, 'po-receiving.js'));
+
+const settings = {
+    companyName: 'Lumen Books LLC',
+    companyAddress: 'DIFC, Dubai, UAE',
+    companyEmirate: 'Dubai',
+    companyTrn: '100234567890003'
+};
+const history = [
+    {
+        id: 'inv-1',
+        date: '2026-10-05',
+        supplyDate: '2026-10-05',
+        type: 'customer',
+        status: 'posted',
+        invoiceNum: 'INV-1001',
+        entityName: 'Dubai Client LLC',
+        emirate: 'Dubai',
+        vatTreatment: 'standard',
+        subtotal: '1000.00',
+        discount: '0.00',
+        tax: '50.00',
+        total: '1050.00',
+        items: [{ description: 'Consulting', qty: 1, rate: '1000.00', amount: '1000.00', tax: '50.00', vatRate: 5 }]
+    },
+    {
+        id: 'crn-1',
+        date: '2026-10-06',
+        supplyDate: '2026-10-06',
+        type: 'credit_note',
+        isCreditNote: true,
+        status: 'posted',
+        invoiceNum: 'CRN-1001',
+        originalInvoiceNum: 'INV-1001',
+        creditNoteReason: 'Returned hours',
+        entityName: 'Dubai Client LLC',
+        emirate: 'Dubai',
+        vatTreatment: 'standard',
+        subtotal: '200.00',
+        discount: '0.00',
+        tax: '10.00',
+        total: '210.00',
+        items: [{ description: 'Consulting return', qty: 1, rate: '200.00', amount: '200.00', tax: '10.00', vatRate: 5 }]
+    },
+    {
+        id: 'inv-ad',
+        date: '2026-10-07',
+        type: 'customer',
+        status: 'posted',
+        invoiceNum: 'INV-1002',
+        entityName: 'AD Client PJSC',
+        emirate: 'Abu Dhabi',
+        vatTreatment: 'zero',
+        subtotal: '500.00',
+        tax: '0.00',
+        total: '500.00',
+        items: [{ description: 'Export service', qty: 1, rate: '500.00', amount: '500.00', tax: '0.00', vatRate: 0 }]
+    },
+    {
+        id: 'sup-1',
+        date: '2026-10-08',
+        type: 'supplier',
+        status: 'posted',
+        invoiceNum: 'BILL-501',
+        entityName: 'Cloud Host LLC',
+        emirate: 'Dubai',
+        vatTreatment: 'standard',
+        account: '6200 Software & SaaS',
+        subtotal: '400.00',
+        tax: '20.00',
+        total: '420.00',
+        items: [{ description: 'Hosting', qty: 1, unitPrice: '400.00', amount: '400.00', tax: '20.00', account: '6200 Software & SaaS' }]
+    }
+];
+store['bookkeeping_settings'] = JSON.stringify(settings);
+store['bookkeeping_history_v2'] = JSON.stringify(history);
+store['bookkeeping_customers'] = JSON.stringify([{ name: 'Dubai Client LLC', trn: '100445566778803', address: 'Business Bay, Dubai, UAE' }]);
+store['bookkeeping_suppliers'] = JSON.stringify([{ name: 'Cloud Host LLC', trn: '100998877665503', address: 'Dubai Internet City, UAE' }]);
+
+// 1. VAT 201 calculation
+const vatReport = VAT201.calculate(history, settings);
+assert.strictEqual(vatReport.emirates['Dubai'].net, 800);
+assert.strictEqual(vatReport.emirates['Dubai'].vat, 40);
+assert.strictEqual(vatReport.emirates['Dubai'].adj, 10);
+assert.strictEqual(vatReport.zeroRated.net, 500);
+assert.strictEqual(vatReport.box9.net, 400);
+assert.strictEqual(vatReport.box9.vat, 20);
+assert.strictEqual(vatReport.netVat, 20);
+
+// 2. FTA Audit File (FAF) generation & double-entry balance
+const fafData = FTAAuditFile.buildFafData({ fromDate: '2026-10-01', toDate: '2026-10-31' });
+assert.strictEqual(fafData.totals.glDebitAED, fafData.totals.glCreditAED);
+assert.strictEqual(FTAAuditFile.validate(fafData).length, 0);
+const fafCsv = FTAAuditFile.buildCsv(fafData);
+assert(fafCsv.includes('CompInfo'));
+assert(fafCsv.includes('GLData'));
+assert(fafCsv.includes('CRN-1001'));
+assert(fafCsv.includes('-200.00'));
+
+// 3. TaxCreditNotes numbering, line math & XSS escaping
+assert.strictEqual(TaxCreditNotes.nextCreditNoteNumber(history), 'CRN-1002');
+const calcLines = TaxCreditNotes.calculateLineItems([{ description: 'Item', qty: 2, rate: 100, discount: 20, vatRate: 5 }]);
+assert.strictEqual(calcLines.subtotal, '180.00');
+assert.strictEqual(calcLines.tax, '9.00');
+assert.strictEqual(calcLines.total, '189.00');
+const previewHtml = TaxCreditNotes.renderTaxDocumentPreview({
+    ...history[1],
+    entityName: '<img src=x onerror=alert(1)>'
+}, settings, {});
+assert(!previewHtml.includes('<img src=x onerror=alert(1)>'));
+assert(previewHtml.includes('&lt;img src=x onerror=alert(1)&gt;'));
+
+// 4. EInvoiceAE PINT-AE 380 & 381 validation and XML generation
+const custProfile = { name: 'Dubai Client LLC', trn: '100445566778803', address: 'Business Bay, Dubai, UAE', country: 'AE' };
+assert.strictEqual(EInvoiceAE.validate(history[0], settings, custProfile).length, 0);
+const xml380 = EInvoiceAE.buildXml(history[0], settings, custProfile);
+assert(xml380.includes('<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>'));
+assert(xml380.includes('urn:peppol:pint:billing-1@ae-1'));
+
+assert.strictEqual(EInvoiceAE.validate(history[1], settings, custProfile).length, 0);
+const xml381 = EInvoiceAE.buildXml(history[1], settings, custProfile);
+assert(xml381.includes('<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>'));
+assert(xml381.includes('<cbc:ID>INV-1001</cbc:ID>'));
+
+// 5. PO / Quote preview & receiving normalization and XSS escaping
+const poHtml = POPreview.render({
+    poNum: 'PO-1',
+    date: '2026-10-10',
+    supplierName: '<script>evil()</script>',
+    lines: [{ name: 'Server <b>Rack</b>', qty: 2, cost: 500, total: 1000 }],
+    total: 1000,
+    status: 'Draft'
+});
+assert(!poHtml.includes('<script>evil()</script>'));
+assert(poHtml.includes('&lt;script&gt;evil()&lt;/script&gt;'));
+
+const quoteHtml = QuotePreview.render({
+    quoteNum: 'QT-1',
+    date: '2026-10-10',
+    clientName: '<svg onload=alert(1)>',
+    lines: [{ name: 'Audit', qty: 1, price: 300, total: 300 }],
+    total: 300
+});
+assert(!quoteHtml.includes('<svg onload=alert(1)>'));
+assert(quoteHtml.includes('&lt;svg onload=alert(1)&gt;'));
+
+const billFromPo = POReceiving.buildBill({
+    id: 'po-1',
+    poNum: 'PO-100',
+    supplierName: 'Hardware Co',
+    lines: [{ name: 'SSD', qty: 2, receivedQty: 2, cost: 100 }]
+}, { taxAmount: 10 });
+assert.strictEqual(billFromPo.entityName, 'Hardware Co');
+assert.strictEqual(billFromPo.subtotal, '200.00');
+assert.strictEqual(billFromPo.tax, '10.00');
+assert.strictEqual(billFromPo.total, '210.00');
+
+console.log(JSON.stringify({ status: 'ok' }));
+"""
+        proc = subprocess.run(
+            ["node", "-e", node_script],
+            env={"PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin", "APP_DIR": str(APP_DIR)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload["status"], "ok")
+
 
 if __name__ == "__main__":
     unittest.main()
