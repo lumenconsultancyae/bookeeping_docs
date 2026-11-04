@@ -37,31 +37,29 @@ Navigate to **INVENTORY > Inventory Directory** to manage physical products:
 - Entering a **Unit Cost** and **Markup (%)** automatically calculates the **Selling Price**, and adjusting the **Selling Price** automatically recalculates the **Markup (%)**.
 - View all historical stock additions (`IN`) and deductions (`OUT`) under **INVENTORY > Stock Ledger**.
 
-### Fixed Assets & Accruals
+### Fixed Assets, Accruals & Deferred Revenue
 - **Fixed Assets (`ASSETS > Assets Directory`)**: Track capital equipment and property with purchase dates, locations, initial values, and useful life in years. The suite automatically generates monthly straight-line depreciation entries and computes accumulated depreciation and net book value.
-- **Accruals & Prepayments (`ACCOUNTING > Accruals`)**: Register prepaid expenses (such as annual office rent or software subscriptions) with a start date, total amount, and amortization life in months. First-month amortization is automatically pro-rated by active days, and you can inspect the full amortization timetable via **View Schedule**.
+- **Accruals, Prepayments & Deferred Revenue (`ACCOUNTING > Accruals`)**: Register prepaid expenses (such as annual office rent or software subscriptions) or unearned customer advances (`2150 Deferred Revenue`) with either a straight-line monthly schedule or a **Usage / Milestone Recognition** schedule. For usage-based contracts, click **Record Usage** to recognize revenue proportionally as units or milestones are delivered.
 
 ---
 
 ## Commercial Transactions & AI Document Capture
 
 ### Quotes & Purchase Orders
-- **Quotes & Estimates (`TRANSACTIONS > Quotes & Estimates`)**: Create pre-sales quotes for clients using inventory items. Once approved by the client, click **Convert to Invoice** to automatically generate a sales invoice in the ledger.
-- **Purchase Orders (`TRANSACTIONS > Purchase Orders`)**: Issue purchase orders to suppliers, mark shipments via **Receive Goods**, and complete procurement using **3-Way Match & Bill** to convert received purchase orders directly into supplier bills.
+- **Quotes & Estimates (`TRANSACTIONS > Quotes & Estimates`)**: Create pre-sales quotes for clients using preset consulting/accounting services, custom descriptions, or inventory items. Preview or print formatted client quotes, and click **Convert to Invoice** once approved to generate a sales invoice in the ledger.
+- **Purchase Orders (`TRANSACTIONS > Purchase Orders`)**: Issue purchase orders to suppliers, inspect printable PO documents via **View / Print**, mark partial or full deliveries via **Receive Goods**, and complete procurement using **3-Way Match & Bill** to convert received quantities directly into supplier bills.
 
-### Sales Invoices & UAE E-Invoicing
-Navigate to **TRANSACTIONS > Sales Invoices** to bill customers:
+### Sales Invoices, Tax Credit Notes & UAE PINT-AE E-Invoicing
+Navigate to **TRANSACTIONS > Sales Invoices** to bill customers and manage credit adjustments:
 - **AI Auto-Fill (Optional)**: Upload an existing PDF or image invoice to automatically populate customer details, line items, and tax treatment.
-- **Manual Generation**: Select or enter a customer name, payment terms, revenue account (`Service Revenue`, `Product Sales`, `Consulting Income`, or `Other Revenue`), line items, and tax treatment (**Standard 5%**, **Zero-Rated 0%**, or **Exempt**).
-- Selling an inventory item under `Product Sales` automatically deducts stock in the **Stock Ledger** and posts a corresponding **Cost of Goods Sold (COGS)** entry.
-- Click **Preview E-Invoice** to inspect or print a formatted UAE Tax Invoice or download a PEPPOL-compliant **UBL 2.1 XML E-Invoice**.
+- **Manual Generation**: Select or enter a customer name, Emirate place of supply, payment terms, revenue account (`Service Revenue`, `Product Sales`, `Consulting Income`, `Other Revenue`, or `Deferred Revenue`), line items, and tax treatment (**Standard 5%**, **Zero-Rated 0%**, or **Exempt**).
+- **Inventory & COGS Automation**: Selling an inventory item under `Product Sales` automatically deducts stock in the **Stock Ledger** and posts a corresponding **Cost of Goods Sold (COGS)** entry.
+- **UAE PINT-AE XML E-Invoicing**: Click **Preview E-Invoice** to print a formatted UAE Tax Invoice or export a validated **UAE Peppol PINT-AE UBL 2.1 XML** document (Invoice `380` or Tax Credit Note `381` with 15-digit TRN validation).
+- **Tax Credit Notes (FTA Article 60)**: Issue a linked **Tax Credit Note (`CRN-####`)** against any posted sales invoice to record returns, discounts, or billing adjustments, automatically reversing Output VAT, revenue, and open customer receivables.
 
-### Supplier Bills & Expenses
-Navigate to **TRANSACTIONS > Supplier Bills** to process vendor invoices with **Lumy AI**:
-- Drag and drop a PDF, PNG, or JPG invoice and click **Analyze Document**.
-- Review the extracted invoice number, date, supplier name, TRN, currency, line items, and suggested expense/asset accounts.
-- Flag non-deductible expenses (such as fines or client entertainment) using **Flag as Corporate Tax Add-Back**.
-- Click **Confirm & Save to Ledger** to post the bill (automatically converting foreign currencies to AED using your configured exchange rates).
+### Supplier Bills & Direct Expenses
+- **Supplier Bills (`TRANSACTIONS > Supplier Bills`)**: Drag and drop a PDF, PNG, or JPG vendor invoice and click **Analyze Document**. Review extracted line items, foreign currency conversion to AED, and suggested accounts, optionally flag items as **Corporate Tax Add-Back**, and click **Confirm & Save to Ledger**.
+- **Direct Expenses (`TRANSACTIONS > Expenses`)**: Record immediate out-of-pocket or card/bank expenses (or scan receipts with AI) paid directly from **Cash**, **Bank**, **Petty Cash**, or **Accounts Payable**, with built-in VAT calculation and Corporate Tax Add-Back flagging.
 
 ### Banking, Reconciliation & Cheque Registry
 - **Banking (`TRANSACTIONS > Banking`)**:
@@ -88,15 +86,16 @@ Navigate to **PAYROLL > Employee details** and **PAYROLL > Timesheet & WPS**:
 - Click **Save Payroll** to post all payroll journal entries automatically, generate printable employee **Payslips**, and click **Download WPS (.sif)** to export a UAE Wage Protection System Salary Information File.
 
 ### Tax Compliance, FP&A & Financial Statements
-- **UAE VAT & Corporate Tax (`TAX > VAT` & `Corporate Tax`)**:
-  - Generate FTA **VAT201** return summaries (Boxes 1 through 14) showing output tax, recoverable input tax, and net payable/refundable VAT.
-  - Review **UAE Corporate Tax** calculations showing Net Profit, non-deductible Add-Backs, Adjusted Taxable Income, and estimated 9% Corporate Tax above the AED 375,000 threshold (respecting Mainland vs. Qualifying Free Zone and Small Business Relief settings).
+- **UAE VAT 201, FTA Audit File (FAF) & Corporate Tax (`TAX > VAT` & `Corporate Tax`)**:
+  - Generate Emirate-level **FTA VAT 201** return summaries (Boxes `1a` through `1g` across Abu Dhabi, Dubai, Sharjah, Ajman, Umm Al Quwain, Ras Al Khaimah, and Fujairah, plus Boxes 2 through 14) showing standard-rated supplies, Tax Credit Note reductions, Reverse Charge, Zero-Rated and Exempt supplies, recoverable input tax, and net payable/refundable VAT.
+  - Click **Download FTA Audit File (FAF .csv)** to export a 5-section UAE Federal Tax Authority Audit File (`CompInfo`, `Customer`, `PurcData`, `SuppData`, `GLData`) for tax audit readiness.
+  - Review **UAE Corporate Tax** calculations showing Net Profit, non-deductible Add-Backs across all expense categories, Adjusted Taxable Income, and estimated 9% Corporate Tax above the AED 375,000 threshold (respecting Mainland vs. Qualifying Free Zone and Small Business Relief settings).
 - **FP&A (`FP&A > Budgeting vs. Actuals` & `Cash Flow Forecast`)**:
   - Set monthly account budgets and monitor real-time variances (`Target Met`, `Under Target`, `Under Budget`, `Over Budget`).
   - View a 90-day **Cash Flow Forecast** projecting your running cash balance from open receivables and payables by due date.
-- **Financial Reports (`REPORTS`) & Audit Log**:
+- **Financial Reports (`REPORTS`), Multi-Company Profiles & Audit Log**:
   - Generate real-time **Profit & Loss**, **Balance Sheet**, **Cash Flow**, **Statement of Equity**, and **Trial Balance** statements.
-  - Inspect the **Audit Log** for a chronological compliance record of system creations, updates, and deletions.
+  - Switch between multiple company profiles, toggle the interface between **English (`EN`)** and **Arabic (`عربي`)** with Right-to-Left (RTL) layout, manage your subscription plan (**Basic** AED 35/mo, **Advance** AED 75/mo, **Premium** AED 100/mo — **Corporate Tax Only (0% VAT)**) secured by salted **PBKDF2-SHA256 (120,000 iterations)** password hashing, and inspect the **Audit Log** for a chronological compliance record of system creations, updates, and deletions.
 
 ---
 
@@ -104,10 +103,8 @@ Navigate to **PAYROLL > Employee details** and **PAYROLL > Timesheet & WPS**:
 
 ### Latest Release Highlights
 
-- **Multi-Page PDF AI Document Extraction**: Uploaded multi-page PDF supplier bills, customer invoices, and petty cash receipts are now stitched and analyzed across all pages so line items and totals on continuation pages are captured completely.
-- **Configurable AI Integration & Resilient Parsing**: Added an **AI Integration Settings** panel under **Settings** to configure custom AI prediction endpoints, paired with resilient JSON extraction and clear fallback prompts when unstructured responses are returned.
-- **Semantic Expense Classification**: AI document extraction now classifies line items into **OpEx**, **COGS**, or **Capitalized R&D** based on business context in addition to mapping each item to the Chart of Accounts.
-- **Enhanced UAE VAT & Corporate Tax Controls**: Added **Company Type** (**Mainland** vs. **Qualifying Free Zone**) and **Small Business Relief** configuration under **Settings**, transaction-level VAT treatment toggles (**Standard 5%**, **Zero-Rated 0%**, **Exempt**), and **Corporate Tax Add-Back** flags on supplier bills and journal entries.
-- **Statement of Account KPI Summary Cards**: Redesigned the **Statement of Account** view with top-level summary cards for **Total Invoice Value**, **Total Payments**, and **Balance** alongside `All Accounts Payable` and `All Accounts Receivable` modes.
-- **Customer Invoice Revenue & Full Ledger Editing**: Updated Revenue KPI calculations to include posted, paid, and partially paid customer invoices accurately, and enabled full editing of date, entity, reference, subtotal, tax, total, and account fields inside the **Edit Ledger Entry** modal.
-- **Banking View Stability**: Resolved an input initialization issue when switching to the **Banking** workspace view.
+- **Subscription Plans, Multi-Company Isolation & Bilingual (`EN` / `عربي`) Workspace**: Added self-service onboarding with salted **PBKDF2-SHA256 (120,000 iterations)** credential hashing, Basic/Advance/Premium subscription tiers (**Corporate Tax Only (0% VAT)** pricing), isolated multi-company profile storage, an Owner Admin Console for account management and upgrade approvals, and full English/Arabic RTL interface switching.
+- **Direct Expenses & FTA Article 60 Tax Credit Notes**: Added a dedicated **Direct Expenses** workspace with AI receipt scanning and immediate Cash/Bank/Petty Cash settlement, plus sequential **Tax Credit Notes (`CRN-####`)** linked to original customer invoices.
+- **UAE PINT-AE UBL 2.1 XML E-Invoicing & FTA Audit File (FAF)**: Upgraded E-Invoice generation to the UAE Peppol **PINT-AE** specification (Invoice `380` and Credit Note `381` with 15-digit TRN validation), expanded **VAT 201** to Emirate-level Boxes `1a`–`1g`, and added **FTA Audit File (`.csv`)** generation.
+- **IFRS 15 Deferred Revenue & Usage-Based Recognition**: Added `2150 Deferred Revenue (Contract Liability)` and usage/milestone drawdown recognition alongside straight-line accrual amortization.
+- **IndexedDB Attachment Storage & Automatic FX Normalization**: Offloaded binary PDF and image attachments to IndexedDB to prevent browser storage quota limits, and added automatic foreign-currency-to-AED normalization for AI-extracted invoices.

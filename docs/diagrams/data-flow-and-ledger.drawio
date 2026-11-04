@@ -8,23 +8,23 @@
         <mxCell id="grp_inputs" value="Transaction &amp; Schedule Sources" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="40" y="40" width="230" height="440" as="geometry" />
         </mxCell>
-        <mxCell id="src_invoices" value="Sales Invoices &amp; Quotes&#xa;(type: customer)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
+        <mxCell id="src_invoices" value="Sales Invoices, Credit Notes &amp; Quotes&#xa;(customer / credit_note)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
           <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="src_bills" value="Supplier Bills &amp; POs&#xa;(type: supplier)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
+        <mxCell id="src_bills" value="Supplier Bills, Direct Expenses &amp; POs&#xa;(supplier / expense)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
           <mxGeometry x="20" y="150" width="190" height="70" as="geometry" />
         </mxCell>
         <mxCell id="src_journals" value="Manual, Payroll &amp; Bank JVs&#xa;(type: journal / bank)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
           <mxGeometry x="20" y="250" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="src_schedules" value="Fixed Assets &amp; Accruals&#xa;(DEPR / AMRT / ACCR)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
+        <mxCell id="src_schedules" value="Fixed Assets, Accruals &amp; Def. Rev&#xa;(DEPR / AMRT / 5000 COGS / 2150 USE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_inputs">
           <mxGeometry x="20" y="350" width="190" height="70" as="geometry" />
         </mxCell>
         <!-- Group 2: Core Ledger Synthesis -->
         <mxCell id="grp_core" value="Ledger &amp; Balance Engine" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="340" y="40" width="230" height="440" as="geometry" />
         </mxCell>
-        <mxCell id="raw_history" value="Persisted History Store&#xa;(getRawHistory / updateHistory)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_core">
+        <mxCell id="raw_history" value="Tenant History &amp; IndexedDB Store&#xa;(getRawHistory / attachments-store)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_core">
           <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
         </mxCell>
         <mxCell id="merged_history" value="Merged Ledger Stream&#xa;(getHistory + Auto-JVs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_core">
@@ -40,16 +40,16 @@
         <mxCell id="grp_outputs" value="Financial Statements &amp; Compliance" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="640" y="40" width="230" height="440" as="geometry" />
         </mxCell>
-        <mxCell id="out_kpis" value="Executive KPIs &amp; SOA&#xa;(Runway / Burn / AR / AP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
+        <mxCell id="out_kpis" value="Executive KPIs &amp; SOA&#xa;(Runway / Burn / Net Rev / AR / AP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
           <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="out_tax" value="FTA VAT201 &amp; Corporate Tax&#xa;(Boxes 1-14 / 9% Threshold)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#be185d;fontColor=#831843;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
+        <mxCell id="out_tax" value="FTA VAT201 (1a-1g) &amp; Corp Tax&#xa;(vat201.js / 9% Threshold)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#be185d;fontColor=#831843;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
           <mxGeometry x="20" y="150" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="out_reports" value="P&amp;L, Balance Sheet, Cash Flow&#xa;&amp; FP&amp;A Variance Reports" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
+        <mxCell id="out_reports" value="P&amp;L, Balance Sheet, Cash Flow,&#xa;Equity Statement &amp; FP&amp;A Reports" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
           <mxGeometry x="20" y="250" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="out_exports" value="PEPPOL XML &amp; WPS SIF Exports&#xa;(generateEInvoiceXML / WPS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#be185d;fontColor=#831843;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
+        <mxCell id="out_exports" value="PINT-AE XML, FAF CSV &amp; WPS SIF&#xa;(einvoice-ae / faf-export / WPS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#be185d;fontColor=#831843;fontSize=12;fontStyle=1;" vertex="1" parent="grp_outputs">
           <mxGeometry x="20" y="350" width="190" height="70" as="geometry" />
         </mxCell>
         <!-- Orthogonal Edges (Aligned Row-by-Row) -->

@@ -121,10 +121,10 @@
 5. **Provisioning Dry-Run & In-Process Unit + Automated BDD E2E Verification**:
    ```bash
    cd /workspace/projects/bookeeping_4affdf/default/bookeeping_docs
-   python3 -m unittest discover -s tests -v
+   python3 -B -m unittest discover -s tests -v
    behave
    ```
-   - **Expected Output**: 100% passing unit tests (`tests/test_agy_service.py` and `tests/test_provisioning.py`), 6 features passed (24 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
+   - **Expected Output**: 100% passing unit, HTTP integration, and Node.js behavioral tests (`tests/test_agy_service.py`, `tests/test_provisioning.py`, `tests/test_auth_and_welcome.py`, and `tests/test_faf_export.py`), 6 features passed (32 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
 
 ---
 

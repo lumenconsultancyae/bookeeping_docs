@@ -9,40 +9,40 @@
           <mxGeometry x="40" y="40" width="660" height="400" as="geometry" />
         </mxCell>
         <!-- Row 1: UI Layer -->
-        <mxCell id="ui_views" value="DOM Workspace Views &amp; Modals&#xa;(index.html / style.css)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="ui_views" value="26 Workspace Views, /welcome &amp; /admin&#xa;(index.html / welcome.html / admin.html)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="spa_router" value="SPA View Router&#xa;(switchView / Navigation)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="spa_router" value="SPA Router, Plan Gate &amp; i18n RTL&#xa;(switchView / plan-gating / i18n)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="235" y="50" width="190" height="70" as="geometry" />
         </mxCell>
         <mxCell id="chart_js" value="Chart.js &amp; KPI Engine&#xa;(updateKPIs / 6M Cash Flow)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontColor=#1e3a8a;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="450" y="50" width="190" height="70" as="geometry" />
         </mxCell>
         <!-- Row 2: Domain & Accounting Engines -->
-        <mxCell id="ledger_engine" value="Double-Entry &amp; Auto-JV Engine&#xa;(getHistory / renderTrialBalance)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="ledger_engine" value="Double-Entry &amp; Auto-JV Engine&#xa;(getHistory / Deferred Rev / Expenses)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="20" y="180" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="tax_payroll" value="UAE Tax, WPS &amp; E-Invoice&#xa;(VAT201 / Corp Tax / SIF / XML)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="tax_payroll" value="UAE Tax, FAF, WPS &amp; PINT-AE&#xa;(VAT201 1a-1g / FAF CSV / 380-381 XML)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="235" y="180" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="pdf_raster" value="PDF.js Rasterizer &amp; AI Client&#xa;(convertPdfToImage / fetch)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="pdf_raster" value="Raw PDF &amp; Image AI Client&#xa;(5 Extraction Workflows / FX Repair)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#4338ca;fontColor=#312e81;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="450" y="180" width="190" height="70" as="geometry" />
         </mxCell>
         <!-- Row 3: Persistence Layer -->
-        <mxCell id="store_ledger" value="localStorage: Ledger &amp; COA&#xa;(bookkeeping_history_v2, coa)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="store_ledger" value="Tenant localStorage &amp; IndexedDB&#xa;(bookkeeping_history_v2, attachments)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="20" y="310" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="store_ops" value="localStorage: Directories &amp; Ops&#xa;(customers, inventory, payroll)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="store_ops" value="localStorage: Directories &amp; Ops&#xa;(customers, inventory, expenses, payroll)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="235" y="310" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="store_config" value="localStorage: Settings &amp; Audit&#xa;(settings, rules, audit_log)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="store_config" value="localStorage: Auth, Profiles &amp; Audit&#xa;(accounts, profiles, settings, audit_log)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="450" y="310" width="190" height="70" as="geometry" />
         </mxCell>
         <!-- Container Group: Container & AI Infrastructure -->
-        <mxCell id="grp_infra" value="Docker Compose &amp; agy-ai Infrastructure" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
+        <mxCell id="grp_infra" value="Cloudflare Edge, Docker &amp; agy-ai Infrastructure" style="swimlane;whiteSpace=wrap;html=1;startSize=30;fillColor=#f8fafc;strokeColor=#475569;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="760" y="40" width="230" height="400" as="geometry" />
         </mxCell>
-        <mxCell id="nginx_proxy" value="Nginx Reverse Proxy&#xa;(bookkeeping-web :9091)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_infra">
+        <mxCell id="nginx_proxy" value="CF Pages Proxy &amp; Nginx&#xa;(functions/api/[[path]].js / :9091)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontColor=#78350f;fontSize=12;fontStyle=1;" vertex="1" parent="grp_infra">
           <mxGeometry x="20" y="50" width="190" height="70" as="geometry" />
         </mxCell>
         <mxCell id="agy_ai" value="agy-ai Prediction Service&#xa;(agy_service.py / agy CLI :3000)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce7f3;strokeColor=#be185d;fontColor=#831843;fontSize=12;fontStyle=1;" vertex="1" parent="grp_infra">

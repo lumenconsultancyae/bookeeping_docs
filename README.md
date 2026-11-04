@@ -21,8 +21,10 @@ bookeeping_docs/
 │   ├── domain.py                                    # Domain error codes, specs & cloud-init UserData builder
 │   ├── infrastructure.py                            # Cloudflare API v4 & AWS EC2 Query API (SigV4) adapters
 │   └── service.py                                   # End-to-end provisioning orchestration service
-├── tests/                                           # Unit & HTTP entrypoint integration test suite
+├── tests/                                           # Unit, HTTP integration & behavioral JS test suite
 │   ├── test_agy_service.py                          # Unit & HTTP integration tests for agy_service.py
+│   ├── test_auth_and_welcome.py                     # Auth, multi-tenant isolation, plan gating & edge proxy tests
+│   ├── test_faf_export.py                           # FTA VAT 201, FAF CSV, Credit Notes, PINT-AE XML & XSS tests
 │   └── test_provisioning.py                         # Unit & CLI tests for AWS/Cloudflare provisioning
 ├── behave.ini                                       # Behave BDD runner configuration
 ├── requirements.txt                                 # Python BDD & WebDriver dependencies
@@ -32,7 +34,7 @@ bookeeping_docs/
 │   │   └── user-guide-and-release-notes.md          # Customer-facing User Guide & Release Notes
 │   ├── technical/
 │   │   ├── architecture-and-execution-flow.md       # Exhaustive 6-phase technical & schema breakdown
-│   │   ├── sdd-system-design.md                     # Software Design Document (SDD) & Gap Roadmap
+│   │   ├── sdd-system-design.md                     # Software Design Document (SDD) & Target Architecture
 │   │   └── operational-runbook.md                   # Deployment, verification & rollback runbook
 │   └── diagrams/
 │       ├── system-architecture.drawio               # Normalized system & agy-ai proxy architecture diagram
@@ -47,6 +49,7 @@ bookeeping_docs/
     │   ├── accounting_page.py
     │   ├── contacts_and_inventory_page.py
     │   ├── transactions_page.py
+    │   ├── expenses_and_admin_page.py
     │   ├── payroll_and_assets_page.py
     │   └── reports_and_settings_page.py
     ├── steps/                                       # Step Definitions (assertions & Page Object orchestration)
@@ -55,14 +58,15 @@ bookeeping_docs/
     │   ├── accounting_steps.py
     │   ├── contacts_and_inventory_steps.py
     │   ├── transactions_steps.py
+    │   ├── expenses_and_admin_steps.py
     │   ├── payroll_and_assets_steps.py
     │   └── reports_and_settings_steps.py
     ├── dashboard_and_kpis.feature                   # Executive Dashboard KPIs & period filtering
-    ├── chart_of_accounts_and_journals.feature       # COA, Manual Journals, Accruals & Period Lock
+    ├── chart_of_accounts_and_journals.feature       # COA, Manual Journals, Accruals, Deferred Revenue & Period Lock
     ├── contacts_and_inventory.feature               # Customers, Suppliers, Inventory, Stock Ledger & Cheques
-    ├── commercial_transactions.feature              # Sales E-Invoices, AI Bills, Quotes, POs, Banking & Recurring
+    ├── commercial_transactions.feature              # Sales E-Invoices, Credit Notes, AI Bills, Expenses, Quotes, POs & Banking
     ├── payroll_and_assets.feature                   # Employees, UAE WPS Payroll, EOSB Gratuity & Fixed Assets
-    └── reports_tax_and_settings.feature             # Trial Balance, P&L, Balance Sheet, Cash Flow, VAT/CT, FP&A & Audit
+    └── reports_tax_and_settings.feature             # Trial Balance, P&L, Balance Sheet, Cash Flow, VAT 201, FAF, CT, FP&A & Admin
 ```
 
 ---
@@ -71,12 +75,12 @@ bookeeping_docs/
 
 | Document | Category | Description |
 | :--- | :--- | :--- |
-| [`docs/product/user-guide-and-release-notes.md`](docs/product/user-guide-and-release-notes.md) | Customer / Product | End-user workflow guide covering Dashboard, Sales, Procurement, Inventory, Payroll, Tax Filing, and Release Notes. |
+| [`docs/product/user-guide-and-release-notes.md`](docs/product/user-guide-and-release-notes.md) | Customer / Product | End-user workflow guide covering Dashboard, Sales, Credit Notes, Direct Expenses, Procurement, Inventory, Payroll, Tax Filing (VAT 201 & FAF), and Release Notes. |
 | [`docs/product/prd-product-requirements.md`](docs/product/prd-product-requirements.md) | Product | Product Requirements Document detailing target personas, delivered functional capabilities, and target roadmap scope. |
-| [`docs/technical/architecture-and-execution-flow.md`](docs/technical/architecture-and-execution-flow.md) | Engineering | Deep-dive technical documentation covering all 6 runtime phases, double-entry ledger math, and `localStorage` / XML / SIF schemas. |
-| [`docs/technical/sdd-system-design.md`](docs/technical/sdd-system-design.md) | Engineering | Software Design Document covering subsystem boundaries, state invariants, and the Unresolved Gap Roadmap. |
+| [`docs/technical/architecture-and-execution-flow.md`](docs/technical/architecture-and-execution-flow.md) | Engineering | Deep-dive technical documentation covering all 6 runtime phases, double-entry ledger math, multi-tenant storage, IndexedDB attachments, and PINT-AE XML / FAF / SIF schemas. |
+| [`docs/technical/sdd-system-design.md`](docs/technical/sdd-system-design.md) | Engineering | Software Design Document covering modular subsystem boundaries, resolved architecture, and target cloud persistence roadmap. |
 | [`docs/technical/operational-runbook.md`](docs/technical/operational-runbook.md) | Operations | Local and production (AWS EC2 + Cloudflare) deployment runbook with prerequisites, sequential execution commands, verification signals, and rollback steps. |
-| [`docs/diagrams/system-architecture.drawio`](docs/diagrams/system-architecture.drawio) | Architecture Diagram | Normalized Draw.io system architecture diagram across Browser SPA, Nginx Proxy (`bookkeeping-web`), and `agy-ai` (`bookkeeping-agy-ai`) services. |
+| [`docs/diagrams/system-architecture.drawio`](docs/diagrams/system-architecture.drawio) | Architecture Diagram | Normalized Draw.io system architecture diagram across Browser SPA, Cloudflare Edge (`functions/api/[[path]].js`), Nginx Proxy (`bookkeeping-web`), and `agy-ai` (`bookkeeping-agy-ai`) services. |
 | [`docs/diagrams/data-flow-and-ledger.drawio`](docs/diagrams/data-flow-and-ledger.drawio) | Data-Flow Diagram | Normalized Draw.io transaction ingestion, double-entry ledger decomposition, and financial statement pipeline diagram. |
 
 ---
@@ -86,13 +90,14 @@ bookeeping_docs/
 ### Prerequisites
 - Docker Engine (`>= 24.0`) and Docker Compose v2 (`docker compose`)
 - Python 3.11+ with `behave` and `selenium` installed (`pip install -r requirements.txt`)
+- Node.js (`>= 18`) for behavioral JavaScript module execution tests
 - Chromium (`chromium`) and ChromeDriver (`chromedriver`)
 
 ### 1. Start the Local Docker Compose Stack (`bookkeeping-web` + `bookkeeping-agy-ai`)
 ```bash
 mkdir -p .agy_state/gemini .agy_state/conversations .agy_state/brain
-docker compose -f /data/Lumen/docs/bookeeping_docs/docker-compose.yml up -d --build
-docker compose -f /data/Lumen/docs/bookeeping_docs/docker-compose.yml ps
+docker compose -f docker-compose.yml up -d --build
+docker compose -f docker-compose.yml ps
 ```
 > **Note**: Locally, `bookkeeping-web` is exposed on `http://localhost:9091` and `bookkeeping-agy-ai` builds from [`Dockerfile.agy`](Dockerfile.agy), binds host port `3000:3000`, and joins `lumen_default` with aliases `agy-ai` and `flowise` to replace the legacy Flowise container across all workspace services.
 
@@ -159,24 +164,24 @@ To prevent unauthorized external users or third-party websites from invoking the
    - Both [`bookkeeping-tool/functions/api/[[path]].js`](../bookkeeping-tool/functions/api/[[path]].js) and [`agy_service.py`](agy_service.py) (`_is_allowed_origin`) validate the request `Origin` (and `Referer` fallback) against trusted application origins (`https://bookeeping.lumenconsultancy.net`, `https://bookkeeping.lumenconsultancy.net`, `https://lumen-bookkeeping.pages.dev`, `https://*.lumen-bookkeeping.pages.dev`, `http://localhost:9091`, `http://127.0.0.1:9091`, `http://bookkeeping-web`).
    - Wildcard CORS (`Access-Control-Allow-Origin: *`) is disabled; CORS headers are only emitted for verified allowlisted origins, blocking any cross-origin browser requests at preflight (`OPTIONS`).
 2. **Application Handshake Header (`X-Lumen-Client: lumen-bookkeeping-web` — `HTTP 401 unauthorized`)**:
-   - All 4 AI extraction `fetch()` calls in [`bookkeeping-tool/script.js`](../bookkeeping-tool/script.js) attach `'X-Lumen-Client': 'lumen-bookkeeping-web'`.
+   - All 5 AI extraction `fetch()` calls across [`bookkeeping-tool/script.js`](../bookkeeping-tool/script.js) and [`bookkeeping-tool/expenses.js`](../bookkeeping-tool/expenses.js) attach `'X-Lumen-Client': 'lumen-bookkeeping-web'`.
    - Requests missing this header (such as direct `curl` probes or generic scanners) are rejected with `401 Unauthorized` and also forced through CORS preflight in browsers.
 3. **Edge-to-Origin Shared Secret (`X-Agy-Proxy-Secret` / `AGY_API_SECRET` — `HTTP 401 unauthorized`)**:
-   - The Cloudflare Pages Function [`functions/api/[[path]].js`](../bookkeeping-tool/functions/api/[[path]].js) injects `X-Agy-Proxy-Secret` from the server-side `AGY_API_SECRET` environment secret when forwarding validated requests to AWS EC2.
+   - The Cloudflare Pages Function [`functions/api/[[path]].js`](../bookkeeping-tool/functions/api/[[path]].js) validates both `GET` and `POST` requests (rejecting other HTTP methods with `405 Method Not Allowed`), fails closed (`503 Service Unavailable`) if `AGY_BACKEND_URL` is unconfigured, and injects `X-Agy-Proxy-Secret` from the server-side `AGY_API_SECRET` environment secret when forwarding validated requests to AWS EC2.
    - [`agy_service.py`](agy_service.py) (`_verify_prediction_request_security`) verifies `X-Agy-Proxy-Secret` using constant-time `hmac.compare_digest`. Any direct request to the AWS EC2 IP/hostname that bypasses the Cloudflare Pages Function is immediately rejected with `401 Unauthorized`, even if `Origin` and `X-Lumen-Client` headers are spoofed.
 
 ---
 
 ## 5. Running the Test Suites
 
-### 1. Run In-Process Unit & HTTP Integration Tests
+### 1. Run In-Process Unit, HTTP Integration & Behavioral JS Tests
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -B -m unittest discover -s tests -v
 ```
 
 ### 2. Execute the Behave BDD E2E Suite
 ```bash
-# Run all 24 scenarios across all 6 features
+# Run all 32 scenarios across all 6 features
 behave
 
 # Run only @smoke tagged scenarios
