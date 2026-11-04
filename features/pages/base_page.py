@@ -195,35 +195,12 @@ class BasePage:
         target_id = self.VIEW_TARGET_MAP.get(view_label, view_label)
 
         def _click_and_verify(d: WebDriver) -> bool:
-            nav_items = d.find_elements(By.CSS_SELECTOR, f'.nav-item[data-target="{target_id}"]')
-            if nav_items:
-                d.execute_script("arguments[0].click();", nav_items[0])
-            else:
-                d.execute_script(
-                    """
-                    document.querySelectorAll('.app-view').forEach(v => {
-                        v.classList.remove('active');
-                        v.style.display = 'none';
-                    });
-                    const target = document.getElementById(arguments[0]);
-                    if (target) {
-                        target.classList.add('active');
-                        target.style.display = 'block';
-                    }
-                    if (arguments[0] === 'view-equity-statement' && typeof window.renderEquityStatement === 'function') {
-                        window.renderEquityStatement();
-                    }
-                    """,
-                    target_id,
-                )
+            nav_el = d.find_element(By.CSS_SELECTOR, f'.nav-item[data-target="{target_id}"]')
+            d.execute_script("arguments[0].click();", nav_el)
             view_el = d.find_element(By.ID, target_id)
             return view_el.is_displayed()
 
         self.wait_until(_click_and_verify)
-        if target_id == "view-audit":
-            self.driver.execute_script(
-                "if (typeof window.renderAuditLog === 'function') window.renderAuditLog();"
-            )
         return target_id
 
     def get_active_page_title(self) -> str:

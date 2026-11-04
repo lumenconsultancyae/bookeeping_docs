@@ -1,0 +1,15 @@
+.git
+.gitignore
+__pycache__
+*.py[cod]
+.pytest_cache
+.coverage
+.DS_Store
+.env
+.env.*
+.agy_state
+artifacts
+features/screenshots
+docs
+tests
+*.log

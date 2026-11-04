@@ -331,14 +331,6 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
                 "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
                 "/__vendor__/pdf.worker.min.js",
             )
-            js = js.replace(
-                "const vat = isVatApplicable ? (sub * 0.05) : 0;",
-                "const vat = (typeof isVatApplicable !== 'undefined' ? isVatApplicable : (vatTreatment === 'standard')) ? (sub * 0.05) : 0;",
-            )
-            js = js.replace(
-                "if (isNew) itemPayload.qty = initialQty;",
-                "if (isNew) itemPayload.qty = 0;",
-            )
             self._send_bytes(js.encode("utf-8"), "application/javascript; charset=utf-8")
             return
 
