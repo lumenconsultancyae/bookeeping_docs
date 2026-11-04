@@ -157,9 +157,10 @@ def step_verify_art59_einvoice_preview_fields(context, expected_supply_date: str
     assert "Date of Supply" in preview_text and expected_supply_date in preview_text, (
         f"Expected Date of Supply '{expected_supply_date}' in preview, got:\n{preview_text[:500]}"
     )
-    assert "Discount" in preview_text, "Expected 'Discount' column/row in preview"
-    assert "VAT Rate" in preview_text, "Expected 'VAT Rate' column in preview"
-    assert "VAT Amount" in preview_text, "Expected 'VAT Amount' column in preview"
+    preview_upper = preview_text.upper()
+    assert "DISCOUNT" in preview_upper, "Expected 'Discount' column/row in preview"
+    assert "VAT RATE" in preview_upper, "Expected 'VAT Rate' column in preview"
+    assert "VAT AMOUNT" in preview_upper, "Expected 'VAT Amount' column in preview"
     context.base_page.dismiss_modals_if_present()
 
 
