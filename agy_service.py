@@ -42,6 +42,12 @@ DEFAULT_ALLOWED_ORIGINS = (
     "https://lumen-bookkeeping.pages.dev",
     "http://localhost:9091",
     "http://127.0.0.1:9091",
+    "http://localhost:8199",
+    "http://127.0.0.1:8199",
+    "http://localhost:8088",
+    "http://127.0.0.1:8088",
+    "http://localhost:8086",
+    "http://127.0.0.1:8086",
     "http://bookkeeping-web",
     "http://bookkeeping-web:80",
 )
@@ -352,13 +358,20 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
                 "- Respond ONLY with the requested ```json ... ``` code block (no extra prose):\n\n"
                 f"{question}"
             )
-        else:
+        elif "json" in question.lower() or "extract" in question.lower() or "bank statement" in question.lower():
             full_prompt = (
                 "You are an accounting document extraction engine.\n"
                 "CRITICAL RULES:\n"
                 "- Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
                 "- Fulfill the extraction instructions below and respond ONLY with the requested "
                 "```json ... ``` code block (no extra prose):\n\n"
+                f"{question}"
+            )
+        else:
+            full_prompt = (
+                "CRITICAL RULES:\n"
+                "- Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
+                "- Respond directly and helpfully to the user prompt below:\n\n"
                 f"{question}"
             )
 

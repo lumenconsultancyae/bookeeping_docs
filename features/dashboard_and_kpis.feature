@@ -48,3 +48,22 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     When the visitor attempts to sign in with password "Lumen2026"
     Then the dashboard page title should be "Dashboard"
     And the topbar should display the signed-in user email
+
+  @smoke @i18n
+  Scenario: Switching between English and Arabic toggles RTL layout and persists across Main Books App and Welcome page
+    When the user toggles the topbar language switcher
+    Then the document language should be "ar" with direction "rtl"
+    And the dashboard page title should be "لوحة التحكم"
+    When a verification screenshot "books_dashboard_arabic_rtl" is captured
+    And the user navigates to the "Settings" view
+    Then the dashboard page title should be "الإعدادات"
+    When a verification screenshot "books_settings_arabic_rtl" is captured
+    And the user signs out from the application topbar
+    Then the browser should redirect to the "/welcome" entrypoint
+    And the document language should be "ar" with direction "rtl"
+    And the welcome hero heading should contain "مرحباً بك في"
+    When a verification screenshot "welcome_arabic_rtl" is captured
+    And the user toggles the topbar language switcher
+    Then the document language should be "en" with direction "ltr"
+    And the welcome hero heading should contain "Welcome to"
+    When a verification screenshot "welcome_english_ltr" is captured

@@ -5,8 +5,8 @@ services:
     ports:
       - "9091:80"
     volumes:
-      - ${HOST_APP_DIR:-/Users/wilsonr/Control/projects/bookeeping_4affdf/default/bookkeeping-tool}:/usr/share/nginx/html
-      - ${HOST_DOCS_DIR:-/Users/wilsonr/Control/projects/bookeeping_4affdf/default/bookeeping_docs}/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${HOST_APP_DIR:-../bookkeeping-tool}:/usr/share/nginx/html:ro
+      - ${HOST_DOCS_DIR:-.}/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - agy-ai
     extra_hosts:
@@ -14,25 +14,29 @@ services:
     restart: unless-stopped
 
   agy-ai:
-    image: orchestration-agent:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.agy
+    image: bookkeeping-agy-ai:local
     container_name: bookkeeping-agy-ai
     command: python3 /app/agy_service.py
     ports:
-      - "3000:3000"
+      - "${AGY_HOST_PORT:-3000}:3000"
     environment:
       - AGY_HOST=0.0.0.0
       - AGY_PORT=3000
-      - AGY_MODEL=Gemini 4 Argon (High)
+      - AGY_MODEL=${AGY_MODEL:-Gemini 4 Argon (High)}
     volumes:
-      - ${HOST_DOCS_DIR:-/Users/wilsonr/Control/projects/bookeeping_4affdf/default/bookeeping_docs}/agy_service.py:/app/agy_service.py:ro
-      - ${HOST_DOCS_DIR:-/Users/wilsonr/Control/projects/bookeeping_4affdf/default/bookeeping_docs}/.agy_state/conversations:/root/.gemini/antigravity-cli/conversations
-      - ${HOST_DOCS_DIR:-/Users/wilsonr/Control/projects/bookeeping_4affdf/default/bookeeping_docs}/.agy_state/brain:/root/.gemini/antigravity-cli/brain
-      - ${HOST_GEMINI_DIR:-/Users/wilsonr/.gemini}/config/antigravity-oauth-token:/root/.gemini/config/antigravity-oauth-token:ro
-      - ${HOST_GEMINI_DIR:-/Users/wilsonr/.gemini}/antigravity-cli/antigravity-oauth-token:/root/.gemini/antigravity-cli/antigravity-oauth-token:ro
-      - ${HOST_GEMINI_DIR:-/Users/wilsonr/.gemini}/antigravity-cli/settings.json:/root/.gemini/antigravity-cli/settings.json:ro
-      - ${HOST_GEMINI_DIR:-/Users/wilsonr/.gemini}/config/settings.json:/root/.gemini/config/settings.json:ro
-      - ${HOST_GEMINI_DIR:-/Users/wilsonr/.gemini}/antigravity-cli/builtin:/root/.gemini/antigravity-cli/builtin:ro
-      - ${HOST_GEMINI_DIR:-/Users/wilsonr/.gemini}/config/builtin:/root/.gemini/config/builtin:ro
+      - ${HOST_DOCS_DIR:-.}/agy_service.py:/app/agy_service.py:ro
+      - ${HOST_DOCS_DIR:-.}/.agy_state/gemini:/root/.gemini
+      - ${HOST_DOCS_DIR:-.}/.agy_state/conversations:/root/.gemini/antigravity-cli/conversations
+      - ${HOST_DOCS_DIR:-.}/.agy_state/brain:/root/.gemini/antigravity-cli/brain
+    networks:
+      default:
+      lumen_default:
+        aliases:
+          - agy-ai
+          - flowise
     restart: unless-stopped
 
   tunnel:
@@ -50,3 +54,7 @@ services:
     depends_on:
       - agy-ai
     restart: unless-stopped
+
+networks:
+  lumen_default:
+    external: true

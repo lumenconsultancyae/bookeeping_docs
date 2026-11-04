@@ -116,3 +116,30 @@ def step_verify_sign_in_error(context, expected_error: str) -> None:
     assert actual == expected_error, (
         f"Expected sign-in error '{expected_error}', got '{actual}'"
     )
+
+
+@when("the user toggles the topbar language switcher")
+def step_toggle_language_switcher(context) -> None:
+    context.created_resources.append(("lang", "en"))
+    context.base_page.toggle_language()
+
+
+@then('the document language should be "{expected_lang}" with direction "{expected_dir}"')
+def step_verify_document_lang_and_dir(context, expected_lang: str, expected_dir: str) -> None:
+    lang, direction = context.base_page.get_document_lang_and_dir()
+    assert lang == expected_lang and direction == expected_dir, (
+        f"Expected html[lang='{expected_lang}'][dir='{expected_dir}'], got lang='{lang}', dir='{direction}'"
+    )
+
+
+@then('the welcome hero heading should contain "{expected_text}"')
+def step_verify_welcome_hero_heading(context, expected_text: str) -> None:
+    heading = context.base_page.get_welcome_hero_heading()
+    assert expected_text in heading, (
+        f"Expected welcome hero heading to contain '{expected_text}', got '{heading}'"
+    )
+
+
+@when('a verification screenshot "{screenshot_name}" is captured')
+def step_capture_named_screenshot(context, screenshot_name: str) -> None:
+    context.base_page.capture_step_screenshot(screenshot_name)

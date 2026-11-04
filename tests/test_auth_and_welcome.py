@@ -107,6 +107,41 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_bilingual_en_ar_toggle_and_rtl_support_across_welcome_and_books_app(self) -> None:
+        profiles_js = (APP_DIR / "profiles-storage.js").read_text(encoding="utf-8")
+        welcome_html = (APP_DIR / "welcome.html").read_text(encoding="utf-8")
+        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        i18n_js_path = APP_DIR / "i18n.js"
+        i18n_css_path = APP_DIR / "i18n.css"
+
+        # 1. Global storage key for language preference across welcome & books app
+        self.assertIn("lumen_lang", profiles_js)
+
+        # 2. i18n assets must exist and be wired into welcome.html and index.html
+        self.assertTrue(i18n_js_path.is_file(), "i18n.js must exist in bookkeeping-tool")
+        self.assertTrue(i18n_css_path.is_file(), "i18n.css must exist in bookkeeping-tool")
+        self.assertIn("i18n.js", welcome_html)
+        self.assertIn("i18n.css", welcome_html)
+        self.assertIn("i18n.js", index_html)
+        self.assertIn("i18n.css", index_html)
+
+        # 3. Topbar language switcher button in both pages
+        self.assertIn('id="btnLangToggle"', welcome_html)
+        self.assertIn('id="btnLangToggle"', index_html)
+
+        # 4. i18n.js must expose LumenI18n API, RTL dir switching, and Arabic translations
+        i18n_js = i18n_js_path.read_text(encoding="utf-8")
+        self.assertIn("LumenI18n", i18n_js)
+        self.assertIn("setLang", i18n_js)
+        self.assertIn("toggleLang", i18n_js)
+        self.assertIn("document.documentElement.dir", i18n_js)
+        self.assertIn("لوحة التحكم", i18n_js)
+        self.assertIn("مرحباً بك في", i18n_js)
+
+        # 5. i18n.css must define RTL layout rules for both welcome and main app
+        i18n_css = i18n_css_path.read_text(encoding="utf-8")
+        self.assertIn('[dir="rtl"]', i18n_css)
+
 
 if __name__ == "__main__":
     unittest.main()

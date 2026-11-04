@@ -211,6 +211,23 @@ class BasePage:
             lambda d: d.find_element(By.ID, "pageTitle").text.strip()
         )
 
+    def toggle_language(self) -> None:
+        """Click the topbar language switcher button (`#btnLangToggle`)."""
+        self.click_id("btnLangToggle")
+
+    def get_document_lang_and_dir(self) -> tuple[str, str]:
+        """Return `(lang, dir)` attributes of `document.documentElement`."""
+        res = self.driver.execute_script(
+            "return [document.documentElement.lang || '', document.documentElement.dir || ''];"
+        )
+        return str(res[0]), str(res[1])
+
+    def get_welcome_hero_heading(self) -> str:
+        """Return the main hero `<h1>` text on `/welcome`."""
+        return self.wait_until(
+            lambda d: d.find_element(By.CSS_SELECTOR, "main .hero h1").text.strip()
+        )
+
     def is_view_displayed(self, view_id: str) -> bool:
         """Return True when `#<view_id>` is visible."""
         return bool(
@@ -455,6 +472,9 @@ class BasePage:
                     localStorage.removeItem('erp_settings');
                 } else if (kind === 'bank_feeds') {
                     localStorage.removeItem('bookkeeping_bank_feeds');
+                } else if (kind === 'lang') {
+                    if (window.LumenI18n) window.LumenI18n.setLang(identifier || 'en');
+                    else localStorage.setItem('lumen_lang', identifier || 'en');
                 }
             }
             """,

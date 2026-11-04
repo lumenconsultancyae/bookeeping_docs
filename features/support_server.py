@@ -314,6 +314,16 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
             return
 
+        if req_path in ("/admin", "/admin.html"):
+            admin_file = APP_SOURCE_DIR / "admin.html"
+            html = admin_file.read_text(encoding="utf-8")
+            html = html.replace(
+                "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap",
+                "/__vendor__/fonts.css",
+            )
+            self._send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
+            return
+
         if req_path == "/script.js":
             script_file = APP_SOURCE_DIR / "script.js"
             js = script_file.read_text(encoding="utf-8")

@@ -292,6 +292,12 @@ class FrontendScriptContractTests(unittest.TestCase):
             4,
             "All 4 AI prediction fetch calls in script.js must include X-Lumen-Client header",
         )
+        expenses_text = (APP_ROOT / "expenses.js").read_text(encoding="utf-8")
+        self.assertIn(
+            "'X-Lumen-Client': 'lumen-bookkeeping-web'",
+            expenses_text,
+            "AI receipt upload fetch call in expenses.js must include X-Lumen-Client header",
+        )
         pages_fn = APP_ROOT / "functions" / "api" / "[[path]].js"
         self.assertTrue(pages_fn.is_file(), "Cloudflare Pages Function proxy must exist in bookkeeping-tool/functions/api/[[path]].js")
         fn_text = pages_fn.read_text(encoding="utf-8")

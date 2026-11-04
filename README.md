@@ -90,10 +90,11 @@ bookeeping_docs/
 
 ### 1. Start the Local Docker Compose Stack (`bookkeeping-web` + `bookkeeping-agy-ai`)
 ```bash
-mkdir -p .agy_state/conversations .agy_state/brain
-docker compose up -d
-docker compose ps
+mkdir -p .agy_state/gemini .agy_state/conversations .agy_state/brain
+docker compose -f /data/Lumen/docs/bookeeping_docs/docker-compose.yml up -d --build
+docker compose -f /data/Lumen/docs/bookeeping_docs/docker-compose.yml ps
 ```
+> **Note**: Locally, `bookkeeping-web` is exposed on `http://localhost:9091` and `bookkeeping-agy-ai` builds from [`Dockerfile.agy`](Dockerfile.agy), binds host port `3000:3000`, and joins `lumen_default` with aliases `agy-ai` and `flowise` to replace the legacy Flowise container across all workspace services.
 
 ### 2. Provision Production Stack on AWS EC2 + Cloudflare (Pages & Zero Trust Tunnel)
 
