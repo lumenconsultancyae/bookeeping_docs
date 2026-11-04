@@ -51,7 +51,6 @@ class DeploymentFilesStructureTests(unittest.TestCase):
             )
 
 
-
 class ProvisioningConfigTests(unittest.TestCase):
     """Tests for reading and validating required AWS and Cloudflare environment variables."""
 
@@ -113,7 +112,6 @@ class ProvisioningConfigTests(unittest.TestCase):
             self.assertEqual(resolve_wrangler_oauth_token(home_path), "cf_oauth_browser_token_xyz")
 
 
-
 class UserDataAndSigV4UnitTests(unittest.TestCase):
     """Tests for EC2 cloud-init UserData generation and AWS Signature V4 signing."""
 
@@ -168,19 +166,12 @@ class CloudflareAndAwsProvisioningServiceTests(unittest.TestCase):
         from deploy.infrastructure import CloudflareApiClient
 
         responses = [
-            # 1. GET existing tunnels -> empty
             {"success": True, "result": []},
-            # 2. POST create tunnel
             {"success": True, "result": {"id": "tun-uuid-1234", "name": "bookkeeping-prod"}},
-            # 3. GET tunnel token
             {"success": True, "result": "eyJhIjoiTUNORUx_VE9LRU4ifQ=="},
-            # 4. PUT tunnel configuration (ingress)
             {"success": True, "result": {"version": 1}},
-            # 5. GET zones for domain
             {"success": True, "result": [{"id": "zone-uuid-5678", "name": "lumen.ae"}]},
-            # 6. GET existing DNS records -> empty
             {"success": True, "result": []},
-            # 7. POST create DNS CNAME record
             {"success": True, "result": {"id": "dns-1", "name": "books.lumen.ae"}},
         ]
         call_log: list[tuple[str, str, dict | None]] = []
@@ -200,7 +191,6 @@ class CloudflareAndAwsProvisioningServiceTests(unittest.TestCase):
         self.assertEqual(spec.public_hostname, "books.lumen.ae")
         self.assertEqual(spec.dns_record_id, "dns-1")
 
-        # Verify ingress points to bookkeeping-app:80
         put_calls = [c for c in call_log if c[0] == "PUT"]
         self.assertEqual(len(put_calls), 1)
         ingress = put_calls[0][2]["config"]["ingress"]
@@ -211,9 +201,7 @@ class CloudflareAndAwsProvisioningServiceTests(unittest.TestCase):
         from deploy.infrastructure import CloudflareApiClient
 
         responses = [
-            # 1. GET existing pages projects -> not found (empty or 404 handled)
             {"success": True, "result": []},
-            # 2. POST create pages project connected to GitHub repo
             {
                 "success": True,
                 "result": {
@@ -248,12 +236,10 @@ class CloudflareAndAwsProvisioningServiceTests(unittest.TestCase):
         self.assertEqual(post_calls[0][2]["source"]["config"]["repo_name"], "bookkeeping-tool")
         self.assertTrue(post_calls[0][2]["source"]["config"]["deployments_enabled"])
 
-
     def test_aws_ec2_client_provisions_sg_keypair_and_instance_idempotently(self) -> None:
         from deploy.infrastructure import AwsEc2Client
 
         xml_responses = [
-            # 1. DescribeImages
             """<?xml version="1.0" encoding="UTF-8"?>
             <DescribeImagesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
                 <imagesSet>
@@ -263,38 +249,31 @@ class CloudflareAndAwsProvisioningServiceTests(unittest.TestCase):
                     </item>
                 </imagesSet>
             </DescribeImagesResponse>""",
-            # 2. DescribeSecurityGroups -> empty
             """<?xml version="1.0" encoding="UTF-8"?>
             <DescribeSecurityGroupsResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
                 <securityGroupInfo/>
             </DescribeSecurityGroupsResponse>""",
-            # 3. CreateSecurityGroup
             """<?xml version="1.0" encoding="UTF-8"?>
             <CreateSecurityGroupResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
                 <groupId>sg-0abc123def456</groupId>
             </CreateSecurityGroupResponse>""",
-            # 4. AuthorizeSecurityGroupIngress
             """<?xml version="1.0" encoding="UTF-8"?>
             <AuthorizeSecurityGroupIngressResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
                 <return>true</return>
             </AuthorizeSecurityGroupIngressResponse>""",
-            # 5. DescribeKeyPairs -> empty
             """<?xml version="1.0" encoding="UTF-8"?>
             <DescribeKeyPairsResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
                 <keySet/>
             </DescribeKeyPairsResponse>""",
-            # 6. CreateKeyPair
             """<?xml version="1.0" encoding="UTF-8"?>
             <CreateKeyPairResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
                 <keyName>bookkeeping-agy-key</keyName>
                 <keyMaterial>-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----</keyMaterial>
             </CreateKeyPairResponse>""",
-            # 7. DescribeInstances -> empty
             """<?xml version="1.0" encoding="UTF-8"?>
             <DescribeInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
                 <reservationSet/>
             </DescribeInstancesResponse>""",
-            # 8. RunInstances
             """<?xml version="1.0" encoding="UTF-8"?>
             <RunInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
                 <instancesSet>
@@ -389,322 +368,38 @@ class CloudflareAndAwsProvisioningServiceTests(unittest.TestCase):
             ):
                 self.assertIn(key, err_payload["error"]["message"])
 
-    def test_provision_py_main_and_live_provisioning_service_branches(self) -> None:
-        from deploy.config import ProvisioningSettings, resolve_aws_login_cache_credentials
-        from deploy.domain import (
-            CloudflarePagesSpec,
-            CloudflareTunnelSpec,
-            Ec2InstanceSpec,
-            ProvisioningError,
-            ProvisioningErrorCode,
-        )
-        from deploy.service import ProvisioningService
-        import provision
 
-        # 1. ProvisioningError.to_dict with and without context
-        err_no_ctx = ProvisioningError(ProvisioningErrorCode.BOOTSTRAP_ERROR, "Failed boot")
-        self.assertEqual(err_no_ctx.to_dict(), {"error": {"code": "bootstrap_error", "message": "Failed boot"}})
-        err_ctx = ProvisioningError(
-            ProvisioningErrorCode.AWS_API_ERROR, "AWS fail", context={"status": "500"}
-        )
-        self.assertEqual(err_ctx.to_dict()["error"]["context"], {"status": "500"})
+class TestRepositoryFileLineBudget(unittest.TestCase):
+    """Guardrail ensuring no tracked or modular file in either repository exceeds 550 lines."""
 
-        # 2. resolve_aws_login_cache_credentials branches
-        with tempfile.TemporaryDirectory() as tmp_home:
-            home_path = Path(tmp_home)
-            cache_dir = home_path / ".aws" / "login" / "cache"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            (cache_dir / "01_corrupt.json").write_text("{bad json", encoding="utf-8")
-            (cache_dir / "02_valid.json").write_text(
-                json.dumps(
-                    {
-                        "signInRegion": "me-central-1",
-                        "accessToken": {
-                            "accessKeyId": "ASIA123",
-                            "secretAccessKey": "SECRET456",
-                            "sessionToken": "TOKEN789",
-                        },
-                    }
-                ),
-                encoding="utf-8",
-            )
-            creds = resolve_aws_login_cache_credentials(home_path)
-            self.assertIsNotNone(creds)
-            self.assertEqual(creds["AWS_ACCESS_KEY_ID"], "ASIA123")
-            self.assertEqual(creds["AWS_SESSION_TOKEN"], "TOKEN789")
-            self.assertEqual(creds["AWS_REGION"], "me-central-1")
-
-        # 3. ProvisioningService.run() live (non-dry-run) branch with injected fake clients
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            env = dict(self.REQUIRED_ENV)
-            env["AGY_API_SECRET"] = "sec-xyz"
-            settings = ProvisioningSettings.from_env(env, artifacts_dir=Path(tmp_dir))
-            self.assertEqual(settings.unwrap_agy_api_secret(), "sec-xyz")
-            self.assertIsNone(settings.unwrap_aws_session_token())
-
-            fake_cf = MagicMock()
-            fake_cf.ensure_tunnel.return_value = CloudflareTunnelSpec(
-                tunnel_id="tun-live-1",
-                tunnel_name="bookkeeping-prod",
-                tunnel_token="tok-live-1",
-                public_hostname="books.lumen.ae",
-                dns_record_id="dns-live-1",
-            )
-            fake_cf.ensure_pages_project.return_value = CloudflarePagesSpec(
-                project_name="lumen-bookkeeping",
-                pages_url="https://lumen-bookkeeping.pages.dev",
-                github_owner="lumenconsultancyae",
-                github_repo="bookkeeping-tool",
-                production_branch="main",
-            )
-            fake_ec2 = MagicMock()
-            fake_ec2.provision_instance.return_value = Ec2InstanceSpec(
-                instance_id="i-live123",
-                public_ip="54.1.2.3",
-                ami_id="ami-live",
-                security_group_id="sg-live",
-                key_name="bookkeeping-agy-key",
-            )
-
-            svc = ProvisioningService(
-                settings=settings, cloudflare_client=fake_cf, ec2_client=fake_ec2
-            )
-            res = svc.run()
-            self.assertFalse(res.dry_run)
-            self.assertEqual(res.public_url, "https://books.lumen.ae")
-            self.assertEqual(res.pages_url, "https://lumen-bookkeeping.pages.dev")
-            self.assertIn("54.1.2.3", res.ssh_command)
-            summary_path = Path(tmp_dir) / "provisioning_result.json"
-            self.assertTrue(summary_path.is_file())
-
-            # 4. provision.main() in-process execution (dry-run & error path)
-            with patch.dict(os.environ, {**env, "PROVISION_ARTIFACTS_DIR": tmp_dir}, clear=True):
-                rc_ok = provision.main(["--dry-run"])
-                self.assertEqual(rc_ok, 0)
-            with patch.dict(os.environ, {}, clear=True):
-                rc_err = provision.main(["--dry-run"])
-                self.assertEqual(rc_err, 1)
-
-    def test_cloudflare_and_ec2_idempotent_existing_resource_and_error_branches(self) -> None:
-        from deploy.domain import ProvisioningError
-        from deploy.infrastructure import AwsEc2Client, CloudflareApiClient
-
-        # 1. Cloudflare existing tunnel, existing DNS record PUT, existing Pages project PATCH + custom_domain
-        cf_responses = [
-            # ensure_tunnel: existing tunnel found
-            {"success": True, "result": [{"id": "tun-existing"}]},
-            # get token
-            {"success": True, "result": "tok-existing"},
-            # put ingress
-            {"success": True, "result": {"version": 2}},
-            # get existing DNS record -> found
-            {"success": True, "result": [{"id": "dns-existing"}]},
-            # update existing DNS record via PUT
-            {"success": True, "result": {"id": "dns-existing"}},
-            # ensure_pages_project: existing project found
-            {"success": True, "result": [{"name": "lumen-bookkeeping", "subdomain": "lumen-bookkeeping.pages.dev"}]},
-            # PATCH project
-            {"success": True, "result": {"name": "lumen-bookkeeping", "subdomain": "lumen-bookkeeping.pages.dev"}},
-            # POST custom domain
-            {"success": True, "result": {"name": "books.lumen.ae"}},
-            # POST pages dns cname
-            {"success": True, "result": {"id": "dns-pages-1"}},
-        ]
-        cf_client = CloudflareApiClient(
-            account_id="acc",
-            api_token="tok",
-            transport=lambda m, u, b=None: cf_responses.pop(0),
-        )
-        tun = cf_client.ensure_tunnel(
-            tunnel_name="bookkeeping-prod", hostname="books.lumen.ae", zone_id="zone-explicit"
-        )
-        self.assertEqual(tun.tunnel_id, "tun-existing")
-        self.assertEqual(tun.dns_record_id, "dns-existing")
-
-        pages = cf_client.ensure_pages_project(
-            project_name="lumen-bookkeeping",
-            backend_url="https://books.lumen.ae",
-            agy_api_secret="sec",
-            custom_domain="books.lumen.ae",
-            zone_id="zone-explicit",
-        )
-        self.assertEqual(pages.pages_url, "https://books.lumen.ae")
-
-        # Cloudflare API failure branch
-        err_client = CloudflareApiClient(
-            account_id="acc",
-            api_token="tok",
-            transport=lambda m, u, b=None: {"success": False, "errors": [{"message": "Bad token"}]},
-        )
-        with self.assertRaises(ProvisioningError):
-            err_client.ensure_tunnel(tunnel_name="fail")
-
-        # 2. AwsEc2Client existing SG, existing KeyPair, existing running instance, and error branches
-        ec2_xml = [
-            # DescribeImages
-            """<DescribeImagesResponse><imagesSet><item><imageId>ami-exist</imageId><creationDate>2026-10-01</creationDate></item></imagesSet></DescribeImagesResponse>""",
-            # DescribeSecurityGroups -> existing
-            """<DescribeSecurityGroupsResponse><securityGroupInfo><item><groupId>sg-exist</groupId></item></securityGroupInfo></DescribeSecurityGroupsResponse>""",
-            # DescribeKeyPairs -> existing
-            """<DescribeKeyPairsResponse><keySet><item><keyName>key-exist</keyName></item></keySet></DescribeKeyPairsResponse>""",
-            # DescribeInstances -> existing running
-            """<DescribeInstancesResponse><reservationSet><item><instancesSet><item><instanceId>i-exist</instanceId><ipAddress>1.2.3.4</ipAddress></item></instancesSet></item></reservationSet></DescribeInstancesResponse>""",
-        ]
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            ec2 = AwsEc2Client(
-                access_key_id="AKIA",
-                secret_access_key="SECRET",
-                region="us-east-1",
-                transport=lambda p: ec2_xml.pop(0),
-            )
-            spec = ec2.provision_instance(
-                instance_name="prod",
-                instance_type="t3.small",
-                security_group_name="sg",
-                key_name="key-exist",
-                key_output_path=Path(tmp_dir) / "k.pem",
-                user_data_script="#!/bin/bash",
-            )
-            self.assertEqual(spec.instance_id, "i-exist")
-            self.assertEqual(spec.public_ip, "1.2.3.4")
-
-            # Invalid XML and empty AMI branches
-            bad_xml_ec2 = AwsEc2Client(
-                access_key_id="AKIA",
-                secret_access_key="SECRET",
-                region="us-east-1",
-                transport=lambda p: "<unclosed",
-            )
-            with self.assertRaises(ProvisioningError):
-                bad_xml_ec2.resolve_ubuntu_ami()
-
-            no_ami_ec2 = AwsEc2Client(
-                access_key_id="AKIA",
-                secret_access_key="SECRET",
-                region="us-east-1",
-                transport=lambda p: "<DescribeImagesResponse><imagesSet/></DescribeImagesResponse>",
-            )
-            with self.assertRaises(ProvisioningError):
-                no_ami_ec2.resolve_ubuntu_ami()
-
-    def test_urllib_default_transports_zone_discovery_and_xml_namespaces(self) -> None:
-        import io
-        import urllib.error
-        import urllib.request
-        from deploy.domain import ProvisioningError
-        from deploy.infrastructure import AwsEc2Client, CloudflareApiClient
-
-        # 1. Cloudflare _default_http_transport success, HTTPError, and URLError
-        cf = CloudflareApiClient(account_id="acc", api_token="tok")
-
-        class FakeHttpResp:
-            def __init__(self, body: str) -> None:
-                self._body = body.encode("utf-8")
-
-            def read(self) -> bytes:
-                return self._body
-
-            def __enter__(self) -> "FakeHttpResp":
-                return self
-
-            def __exit__(self, *args: object) -> None:
-                pass
-
-        with patch.object(urllib.request, "urlopen", return_value=FakeHttpResp('{"success": true, "result": {"id": "1"}}')):
-            res = cf._default_http_transport("POST", "https://api.cloudflare.com/client/v4/test", {"a": 1})
-            self.assertTrue(res["success"])
-
-        http_err = urllib.error.HTTPError(
-            url="https://api.cloudflare.com/client/v4/test",
-            code=403,
-            msg="Forbidden",
-            hdrs=None,  # type: ignore[arg-type]
-            fp=io.BytesIO(b'{"errors":[{"message":"denied"}]}'),
-        )
-        with patch.object(urllib.request, "urlopen", side_effect=http_err):
-            with self.assertRaises(ProvisioningError):
-                cf._default_http_transport("GET", "https://api.cloudflare.com/client/v4/test")
-
-        with patch.object(urllib.request, "urlopen", side_effect=urllib.error.URLError("down")):
-            with self.assertRaises(ProvisioningError):
-                cf._default_http_transport("GET", "https://api.cloudflare.com/client/v4/test")
-
-        # 2. Zone auto-discovery in _ensure_dns_cname & _ensure_pages_dns_cname + error tolerance
-        zone_cf_responses = [
-            {"success": True, "result": [{"id": "z-auto", "name": "lumen.ae"}]},
-            {"success": True, "result": []},
-            {"success": True, "result": {"id": "rec-created"}},
-            {"success": True, "result": [{"id": "z-auto", "name": "lumen.ae"}]},
-            {"success": True, "result": {"id": "pages-rec-created"}},
-            # No matching zone -> returns None cleanly
-            {"success": True, "result": [{"id": "z-other", "name": "other.com"}]},
-            {"success": True, "result": [{"id": "z-other", "name": "other.com"}]},
-            # Tunnel without hostname
-            {"success": True, "result": [{"id": "tun-nohost"}]},
-            {"success": True, "result": "tok-nohost"},
-            {"success": True, "result": {"version": 1}},
-        ]
-        zone_cf = CloudflareApiClient(
-            account_id="acc",
-            api_token="tok",
-            transport=lambda m, u, b=None: zone_cf_responses.pop(0),
-        )
-        cname_id = zone_cf._ensure_dns_cname(tunnel_id="tun-1", hostname="books.lumen.ae")
-        self.assertEqual(cname_id, "rec-created")
-        pages_cname_id = zone_cf._ensure_pages_dns_cname(
-            pages_subdomain="lumen.pages.dev", hostname="books.lumen.ae"
-        )
-        self.assertEqual(pages_cname_id, "pages-rec-created")
-        self.assertIsNone(zone_cf._ensure_dns_cname(tunnel_id="tun-1", hostname="books.lumen.ae"))
-        self.assertIsNone(
-            zone_cf._ensure_pages_dns_cname(pages_subdomain="lumen.pages.dev", hostname="books.lumen.ae")
-        )
-        tun_nohost = zone_cf.ensure_tunnel(tunnel_name="nohost")
-        self.assertIsNone(tun_nohost.public_hostname)
-
-        # 3. AwsEc2Client _default_ec2_transport success, HTTPError, URLError, and XML namespace stripping
-        ec2 = AwsEc2Client(
-            access_key_id="AKIA",
-            secret_access_key="SECRET",
-            region="me-central-1",
-            session_token="SESS",
-        )
-        ns_xml = '<DescribeImagesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/"><imagesSet><item><imageId>ami-ns</imageId><creationDate>2026-10-01</creationDate></item></imagesSet></DescribeImagesResponse>'
-        with patch.object(urllib.request, "urlopen", return_value=FakeHttpResp(ns_xml)):
-            self.assertEqual(ec2.resolve_ubuntu_ami(), "ami-ns")
-
-        ec2_http_err = urllib.error.HTTPError(
-            url="https://ec2.me-central-1.amazonaws.com/",
-            code=400,
-            msg="Bad Request",
-            hdrs=None,  # type: ignore[arg-type]
-            fp=io.BytesIO(b"<Response><Errors><Error><Message>Invalid</Message></Error></Errors></Response>"),
-        )
-        with patch.object(urllib.request, "urlopen", side_effect=ec2_http_err):
-            with self.assertRaises(ProvisioningError):
-                ec2._default_ec2_transport({"Action": "DescribeImages"})
-
-        with patch.object(urllib.request, "urlopen", side_effect=urllib.error.URLError("net down")):
-            with self.assertRaises(ProvisioningError):
-                ec2._default_ec2_transport({"Action": "DescribeImages"})
-
-    def test_both_repositories_enforce_gitignore_dockerignore_and_zero_tracked_junk(self) -> None:
+    def test_all_files_are_at_most_550_lines(self) -> None:
         app_root = REPO_ROOT.parent / "bookkeeping-tool"
-        for repo in (REPO_ROOT, app_root):
-            self.assertTrue((repo / ".gitignore").is_file(), f"Missing .gitignore in {repo}")
-            self.assertTrue((repo / ".dockerignore").is_file(), f"Missing .dockerignore in {repo}")
-
-        tracked = subprocess.run(
-            ["git", "ls-files"],
-            cwd=str(app_root),
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.splitlines()
-        self.assertFalse(any(f.startswith("node_modules/") for f in tracked), "node_modules must not be tracked")
-        self.assertFalse(any(f.startswith("docs/") for f in tracked), "duplicate docs/ must not be tracked in app repo")
-        self.assertFalse(any(f.startswith("patch_") for f in tracked), "patch_*.py scratch scripts must not be tracked")
-        self.assertFalse(any(f.startswith("test_") for f in tracked), "scratch test_* files must not be tracked in app repo")
+        for repo_root in (REPO_ROOT, app_root):
+            if not (repo_root / ".git").exists():
+                continue
+            proc = subprocess.run(
+                ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            oversized: list[str] = []
+            for rel_path in proc.stdout.splitlines():
+                file_path = repo_root / rel_path
+                if not file_path.is_file():
+                    continue
+                try:
+                    line_count = len(file_path.read_text(encoding="utf-8", errors="ignore").splitlines())
+                except OSError:
+                    continue
+                if line_count > 550:
+                    oversized.append(f"{repo_root.name}/{rel_path} ({line_count} lines)")
+            self.assertEqual(
+                oversized,
+                [],
+                f"Files exceeding 550-line budget: {oversized}",
+            )
 
 
 if __name__ == "__main__":

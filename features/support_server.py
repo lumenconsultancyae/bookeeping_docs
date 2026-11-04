@@ -324,21 +324,20 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
             return
 
-        if req_path == "/script.js":
-            script_file = APP_SOURCE_DIR / "script.js"
-            js = script_file.read_text(encoding="utf-8")
-            js = js.replace(
-                "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
-                "/__vendor__/pdf.worker.min.js",
-            )
-            self._send_bytes(js.encode("utf-8"), "application/javascript; charset=utf-8")
-            return
-
         rel_path = req_path.lstrip("/")
         resolved_root = APP_SOURCE_DIR.resolve()
         file_path: Path = (resolved_root / rel_path).resolve()
         if not file_path.is_relative_to(resolved_root) or not file_path.is_file():
             self._send_bytes(b"Not Found", "text/plain; charset=utf-8", status=404)
+            return
+
+        if file_path.suffix == ".js":
+            js = file_path.read_text(encoding="utf-8")
+            js = js.replace(
+                "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
+                "/__vendor__/pdf.worker.min.js",
+            )
+            self._send_bytes(js.encode("utf-8"), "application/javascript; charset=utf-8")
             return
 
         mime_type, _ = mimetypes.guess_type(str(file_path))

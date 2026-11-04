@@ -9,11 +9,25 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 APP_DIR = REPO_ROOT.parent / "bookkeeping-tool"
 
 
+def _read_index_html_bundle() -> str:
+    parts = [(APP_DIR / "index.html").read_text(encoding="utf-8")]
+    for path in sorted(APP_DIR.glob("views-*.js")):
+        parts.append(path.read_text(encoding="utf-8"))
+    return "\n".join(parts)
+
+
+def _read_script_js_bundle() -> str:
+    parts = [(APP_DIR / "script.js").read_text(encoding="utf-8")]
+    for path in sorted(APP_DIR.glob("app-*.js")):
+        parts.append(path.read_text(encoding="utf-8"))
+    return "\n".join(parts)
+
+
 class FTAAuditFileExportUnitTests(unittest.TestCase):
     """Verify the Export FTA Audit File (FAF) button and FTA-mandated .csv schema."""
 
     def test_index_html_wires_faf_export_script_and_tax_module_buttons(self) -> None:
-        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        index_html = _read_index_html_bundle()
         faf_js_path = APP_DIR / "faf-export.js"
 
         self.assertTrue(faf_js_path.is_file(), "faf-export.js must exist in bookkeeping-tool")
@@ -28,113 +42,23 @@ class FTAAuditFileExportUnitTests(unittest.TestCase):
         self.assertTrue(faf_js_path.is_file(), "faf-export.js must exist in bookkeeping-tool")
         faf_js = faf_js_path.read_text(encoding="utf-8")
 
-        # Must expose FTAAuditFile API and window.exportFTAAuditFile
-        self.assertIn("FTAAuditFile", faf_js)
-        self.assertIn("exportFTAAuditFile", faf_js)
-        self.assertIn("buildCsv", faf_js)
-        self.assertIn("buildFafData", faf_js)
-        self.assertIn("validate", faf_js)
-
-        # Section 1: Company Header (CompInfo .. CompEnd)
-        self.assertIn("CompInfo", faf_js)
-        self.assertIn("CompEnd", faf_js)
+        for sym in ("FTAAuditFile", "exportFTAAuditFile", "buildCsv", "buildFafData", "validate"):
+            self.assertIn(sym, faf_js)
+        for sec in ("CompInfo", "CompEnd", "MasterData", "MasterDataEnd", "PurcData", "PurcDataEnd", "SuppData", "SuppDataEnd", "GLData", "GLDataEnd"):
+            self.assertIn(sec, faf_js)
         for col in (
-            "TaxablePersonNameEn",
-            "TaxablePersonNameAr",
-            "TRN",
-            "TaxAgencyName",
-            "TAN",
-            "TaxAgentName",
-            "TAAN",
-            "PeriodStart",
-            "PeriodEnd",
-            "FAFCreationDate",
-            "ProductVersion",
-            "FAFVersion",
-        ):
-            self.assertIn(col, faf_js)
-
-        # Section 2: Customer/Supplier Master Data (MasterData .. MasterDataEnd)
-        self.assertIn("MasterData", faf_js)
-        self.assertIn("MasterDataEnd", faf_js)
-        for col in (
-            "PartyType",
-            "PartyID",
-            "PartyName",
-            "TRN",
-            "Country",
-            "Emirate",
-            "Address",
-            "Email",
-            "Phone",
-            "PaymentTerms",
-        ):
-            self.assertIn(col, faf_js)
-
-        # Section 3: Purchase Line Details (PurcData .. PurcDataEnd)
-        self.assertIn("PurcData", faf_js)
-        self.assertIn("PurcDataEnd", faf_js)
-        for col in (
-            "SupplierName",
-            "SupplierID",
-            "SupplierTRN",
-            "SupplierCountry",
-            "SupplierEmirate",
-            "InvoiceNo",
-            "InvoiceDate",
-            "PostingDate",
-            "LineNo",
-            "ProductDescription",
-            "GLAccountID",
-            "GLAccountName",
-            "Quantity",
-            "UnitPriceAED",
-            "LineValueAED",
-            "VATRate",
-            "VATAmountAED",
-            "TotalAmountAED",
-            "FCYCode",
-            "FCYExchangeRate",
-            "LineValueFCY",
-            "VATAmountFCY",
-            "TaxCode",
-        ):
-            self.assertIn(col, faf_js)
-
-        # Section 4: Sales / Supply Line Details (SuppData .. SuppDataEnd)
-        self.assertIn("SuppData", faf_js)
-        self.assertIn("SuppDataEnd", faf_js)
-        for col in (
-            "CustomerName",
-            "CustomerID",
-            "CustomerTRN",
-            "CustomerCountry",
-            "CustomerEmirate",
-            "InvoiceNo",
-            "InvoiceDate",
-            "SupplyDate",
-            "LineNo",
-            "ProductDescription",
-            "DiscountAED",
-        ):
-            self.assertIn(col, faf_js)
-
-        # Section 5: General Ledger Entries (GLData .. GLDataEnd)
-        self.assertIn("GLData", faf_js)
-        self.assertIn("GLDataEnd", faf_js)
-        for col in (
-            "TransactionDate",
-            "AccountID",
-            "AccountName",
-            "TransactionID",
-            "JournalType",
-            "SourceDocumentNo",
-            "CounterpartyName",
-            "Description",
-            "DebitAmountAED",
-            "CreditAmountAED",
-            "BalanceAED",
-            "Currency",
+            "TaxablePersonNameEn", "TaxablePersonNameAr", "TRN", "TaxAgencyName", "TAN",
+            "TaxAgentName", "TAAN", "PeriodStart", "PeriodEnd", "FAFCreationDate",
+            "ProductVersion", "FAFVersion", "PartyType", "PartyID", "PartyName", "Country",
+            "Emirate", "Address", "Email", "Phone", "PaymentTerms", "SupplierName", "SupplierID",
+            "SupplierTRN", "SupplierCountry", "SupplierEmirate", "InvoiceNo", "InvoiceDate",
+            "PostingDate", "LineNo", "ProductDescription", "GLAccountID", "GLAccountName",
+            "Quantity", "UnitPriceAED", "LineValueAED", "VATRate", "VATAmountAED", "TotalAmountAED",
+            "FCYCode", "FCYExchangeRate", "LineValueFCY", "VATAmountFCY", "TaxCode",
+            "CustomerName", "CustomerID", "CustomerTRN", "CustomerCountry", "CustomerEmirate",
+            "SupplyDate", "DiscountAED", "TransactionDate", "AccountID", "AccountName",
+            "TransactionID", "JournalType", "SourceDocumentNo", "CounterpartyName",
+            "Description", "DebitAmountAED", "CreditAmountAED", "BalanceAED", "Currency",
         ):
             self.assertIn(col, faf_js)
 
@@ -143,101 +67,57 @@ class Vat201ComplianceUnitTests(unittest.TestCase):
     """Verify UAE VAT 201 Boxes 1a-1g Emirate breakdown, Box 3/10 Reverse Charge, Zero-Rated vs Exempt, and transaction persistence."""
 
     def test_index_html_contains_emirate_boxes_1a_to_1g_and_transaction_tax_fields(self) -> None:
-        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        index_html = _read_index_html_bundle()
         vat201_js_path = APP_DIR / "vat201.js"
 
         self.assertTrue(vat201_js_path.is_file(), "vat201.js must exist in bookkeeping-tool")
         self.assertIn("vat201.js", index_html)
 
-        # Boxes 1a-1g for the 7 UAE Emirates
         for box_id in ("vatBox1a", "vatBox1b", "vatBox1c", "vatBox1d", "vatBox1e", "vatBox1f", "vatBox1g"):
             self.assertIn(f'id="{box_id}"', index_html)
-        for emirate in (
-            "Abu Dhabi",
-            "Dubai",
-            "Sharjah",
-            "Ajman",
-            "Umm Al Quwain",
-            "Ras Al Khaimah",
-            "Fujairah",
-        ):
+        for emirate in ("Abu Dhabi", "Dubai", "Sharjah", "Ajman", "Umm Al Quwain", "Ras Al Khaimah", "Fujairah"):
             self.assertIn(emirate, index_html)
-
-        # Transaction-level Emirate & VAT Treatment controls across Customer, Supplier, Journal, Expense, and Edit Modal
         for field_id in (
-            "custEmirate",
-            "resEmirate",
-            "resVatTreatment",
-            "journalEmirate",
-            "expEmirate",
-            "expVatTreatment",
-            "editEntryEmirate",
-            "editEntryVatTreatment",
+            "custEmirate", "resEmirate", "resVatTreatment", "journalEmirate",
+            "expEmirate", "expVatTreatment", "editEntryEmirate", "editEntryVatTreatment",
         ):
             self.assertIn(f'id="{field_id}"', index_html)
-
         self.assertIn('value="reverse_charge"', index_html)
 
     def test_script_and_expenses_persist_vat_treatment_and_emirate_on_every_transaction(self) -> None:
-        script_js = (APP_DIR / "script.js").read_text(encoding="utf-8")
+        script_js = _read_script_js_bundle()
         expenses_js = (APP_DIR / "expenses.js").read_text(encoding="utf-8")
         vat201_js = (APP_DIR / "vat201.js").read_text(encoding="utf-8")
 
-        self.assertIn("VAT201", vat201_js)
-        self.assertIn("calculate", vat201_js)
-        self.assertIn("render", vat201_js)
-        self.assertIn("normalizeTransaction", vat201_js)
-
-        self.assertIn("custEmirate", script_js)
-        self.assertIn("resVatTreatment", script_js)
-        self.assertIn("resEmirate", script_js)
-        self.assertIn("journalEmirate", script_js)
-        self.assertIn("VAT201", script_js)
-
-        self.assertIn("expVatTreatment", expenses_js)
-        self.assertIn("expEmirate", expenses_js)
-        self.assertIn("vatTreatment", expenses_js)
-        self.assertIn("emirate", expenses_js)
+        for sym in ("VAT201", "calculate", "render", "normalizeTransaction"):
+            self.assertIn(sym, vat201_js)
+        for sym in ("custEmirate", "resVatTreatment", "resEmirate", "journalEmirate", "VAT201"):
+            self.assertIn(sym, script_js)
+        for sym in ("expVatTreatment", "expEmirate", "vatTreatment", "emirate"):
+            self.assertIn(sym, expenses_js)
 
 
 class Art59TaxInvoiceAndCreditNoteUnitTests(unittest.TestCase):
     """Verify UAE VAT Executive Regulation Art. 59 & Art. 60 Tax Invoices & Credit Notes (CRN-####)."""
 
     def test_index_html_contains_supply_date_line_discounts_per_line_vat_and_credit_note_workflow(self) -> None:
-        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        index_html = _read_index_html_bundle()
         credit_notes_js = APP_DIR / "credit-notes.js"
 
         self.assertTrue(credit_notes_js.is_file(), "credit-notes.js must exist in bookkeeping-tool")
         self.assertIn("credit-notes.js", index_html)
 
-        # Customer Invoice Art. 59 fields: Date of Supply, per-line discount, per-line VAT rate & amount, discount summary
         for token in (
-            'id="custSupplyDate"',
-            'id="custDiscountDisplay"',
-            'class="item-discount"',
-            'class="item-vat-rate',
-            'class="item-vat-amount',
+            'id="custSupplyDate"', 'id="custDiscountDisplay"',
+            'class="item-discount"', 'class="item-vat-rate', 'class="item-vat-amount',
         ):
             self.assertIn(token, index_html)
 
-        # Dedicated Tax Credit Note (CRN-####) workflow controls
         for crn_id in (
-            "taxCreditNoteCard",
-            "creditNoteForm",
-            "crnNumber",
-            "crnDate",
-            "crnSupplyDate",
-            "crnOriginalInvoice",
-            "crnReason",
-            "crnEntity",
-            "crnLineItemsList",
-            "crnDiscountDisplay",
-            "crnSubtotalDisplay",
-            "crnVatDisplay",
-            "crnTotalDisplay",
-            "previewCrnBtn",
-            "submitCrnBtn",
-            "creditNotesHistoryBody",
+            "taxCreditNoteCard", "creditNoteForm", "crnNumber", "crnDate", "crnSupplyDate",
+            "crnOriginalInvoice", "crnReason", "crnEntity", "crnLineItemsList",
+            "crnDiscountDisplay", "crnSubtotalDisplay", "crnVatDisplay", "crnTotalDisplay",
+            "previewCrnBtn", "submitCrnBtn", "creditNotesHistoryBody",
         ):
             self.assertIn(f'id="{crn_id}"', index_html)
 
@@ -249,35 +129,16 @@ class Art59TaxInvoiceAndCreditNoteUnitTests(unittest.TestCase):
         vat201_js = (APP_DIR / "vat201.js").read_text(encoding="utf-8")
         faf_js = (APP_DIR / "faf-export.js").read_text(encoding="utf-8")
 
-        # credit-notes.js public API & Art. 59 / Art. 60 compliance
         for symbol in (
-            "TaxCreditNotes",
-            "nextCreditNoteNumber",
-            "CRN-",
-            "Date of Supply",
-            "TAX CREDIT NOTE",
-            "TAX INVOICE",
-            "VAT Rate",
-            "VAT Amount",
-            "Discount",
-            "Original Invoice",
-            "renderTaxDocumentPreview",
-            "issueCreditNoteFromInvoice",
+            "TaxCreditNotes", "nextCreditNoteNumber", "CRN-", "Date of Supply",
+            "TAX CREDIT NOTE", "TAX INVOICE", "VAT Rate", "VAT Amount",
+            "Discount", "Original Invoice", "renderTaxDocumentPreview", "issueCreditNoteFromInvoice",
         ):
             self.assertIn(symbol, credit_notes_js)
 
-        # einvoice-ae.js PINT-AE CreditNote (381), Delivery Date, AllowanceCharge, and BillingReference
-        for xml_token in (
-            "381",
-            "CreditNote",
-            "BillingReference",
-            "InvoiceDocumentReference",
-            "ActualDeliveryDate",
-            "AllowanceCharge",
-        ):
+        for xml_token in ("381", "CreditNote", "BillingReference", "InvoiceDocumentReference", "ActualDeliveryDate", "AllowanceCharge"):
             self.assertIn(xml_token, einvoice_js)
 
-        # vat201.js and faf-export.js Credit Note integration
         self.assertIn("credit_note", vat201_js)
         self.assertIn("CREDIT_NOTE", faf_js)
 
@@ -286,7 +147,7 @@ class PrepaidCreditsAndDrawdownUnitTests(unittest.TestCase):
     """Verify SME-universal Prepaid Balances, Deferred Revenue (2150), COGS routing, and Usage/Drawdown tracking."""
 
     def test_coa_and_faf_include_2150_deferred_revenue_customer_advances(self) -> None:
-        script_js = (APP_DIR / "script.js").read_text(encoding="utf-8")
+        script_js = _read_script_js_bundle()
         faf_js = (APP_DIR / "faf-export.js").read_text(encoding="utf-8")
 
         self.assertIn("2150", script_js)
@@ -295,7 +156,7 @@ class PrepaidCreditsAndDrawdownUnitTests(unittest.TestCase):
         self.assertIn("Deferred Revenue / Customer Advances", faf_js)
 
     def test_index_html_contains_universal_accrual_accounts_mode_and_usage_modal(self) -> None:
-        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        index_html = _read_index_html_bundle()
 
         for token in (
             'value="5000 Cost of Goods Sold"',
@@ -314,15 +175,9 @@ class PrepaidCreditsAndDrawdownUnitTests(unittest.TestCase):
             self.assertIn(token, index_html)
 
     def test_script_js_implements_cogs_prepaid_routing_and_usage_drawdown_entries(self) -> None:
-        script_js = (APP_DIR / "script.js").read_text(encoding="utf-8")
+        script_js = _read_script_js_bundle()
 
-        for symbol in (
-            "resolvePrepaidExpenseAccount",
-            "recordAccrualUsage",
-            "usageEntries",
-            "scheduleMode",
-            "USE-",
-        ):
+        for symbol in ("resolvePrepaidExpenseAccount", "recordAccrualUsage", "usageEntries", "scheduleMode", "USE-"):
             self.assertIn(symbol, script_js)
 
         arch_doc = (REPO_ROOT / "docs" / "technical" / "architecture-and-execution-flow.md").read_text(encoding="utf-8")
@@ -446,7 +301,6 @@ store['bookkeeping_history_v2'] = JSON.stringify(history);
 store['bookkeeping_customers'] = JSON.stringify([{ name: 'Dubai Client LLC', trn: '100445566778803', address: 'Business Bay, Dubai, UAE' }]);
 store['bookkeeping_suppliers'] = JSON.stringify([{ name: 'Cloud Host LLC', trn: '100998877665503', address: 'Dubai Internet City, UAE' }]);
 
-// 1. VAT 201 calculation
 const vatReport = VAT201.calculate(history, settings);
 assert.strictEqual(vatReport.emirates['Dubai'].net, 800);
 assert.strictEqual(vatReport.emirates['Dubai'].vat, 40);
@@ -456,7 +310,6 @@ assert.strictEqual(vatReport.box9.net, 400);
 assert.strictEqual(vatReport.box9.vat, 20);
 assert.strictEqual(vatReport.netVat, 20);
 
-// 2. FTA Audit File (FAF) generation & double-entry balance
 const fafData = FTAAuditFile.buildFafData({ fromDate: '2026-10-01', toDate: '2026-10-31' });
 assert.strictEqual(fafData.totals.glDebitAED, fafData.totals.glCreditAED);
 assert.strictEqual(FTAAuditFile.validate(fafData).length, 0);
@@ -466,7 +319,6 @@ assert(fafCsv.includes('GLData'));
 assert(fafCsv.includes('CRN-1001'));
 assert(fafCsv.includes('-200.00'));
 
-// 3. TaxCreditNotes numbering, line math & XSS escaping
 assert.strictEqual(TaxCreditNotes.nextCreditNoteNumber(history), 'CRN-1002');
 const calcLines = TaxCreditNotes.calculateLineItems([{ description: 'Item', qty: 2, rate: 100, discount: 20, vatRate: 5 }]);
 assert.strictEqual(calcLines.subtotal, '180.00');
@@ -479,7 +331,6 @@ const previewHtml = TaxCreditNotes.renderTaxDocumentPreview({
 assert(!previewHtml.includes('<img src=x onerror=alert(1)>'));
 assert(previewHtml.includes('&lt;img src=x onerror=alert(1)&gt;'));
 
-// 4. EInvoiceAE PINT-AE 380 & 381 validation and XML generation
 const custProfile = { name: 'Dubai Client LLC', trn: '100445566778803', address: 'Business Bay, Dubai, UAE', country: 'AE' };
 assert.strictEqual(EInvoiceAE.validate(history[0], settings, custProfile).length, 0);
 const xml380 = EInvoiceAE.buildXml(history[0], settings, custProfile);
@@ -491,7 +342,6 @@ const xml381 = EInvoiceAE.buildXml(history[1], settings, custProfile);
 assert(xml381.includes('<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>'));
 assert(xml381.includes('<cbc:ID>INV-1001</cbc:ID>'));
 
-// 5. PO / Quote preview & receiving normalization and XSS escaping
 const poHtml = POPreview.render({
     poNum: 'PO-1',
     date: '2026-10-10',
@@ -540,4 +390,3 @@ console.log(JSON.stringify({ status: 'ok' }));
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -353,7 +353,12 @@ assert(!backing.has('bookkeeping_history_v2'));
         self.assertEqual(payload["status"], "ok")
 
         # 4. Verify switchView in script.js enforces .app-view validation & LumenPlanGate.canOpen, and docs parity
-        script_js = (APP_DIR / "script.js").read_text(encoding="utf-8")
+        script_js = "\n".join(
+            [
+                (APP_DIR / "script.js").read_text(encoding="utf-8"),
+                *(p.read_text(encoding="utf-8") for p in sorted(APP_DIR.glob("app-*.js"))),
+            ]
+        )
         self.assertIn("targetEl.classList.contains('app-view')", script_js)
         self.assertIn("window.LumenPlanGate.canOpen(targetId)", script_js)
 
@@ -361,6 +366,20 @@ assert(!backing.has('bookkeeping_history_v2'));
             doc_text = (REPO_ROOT / doc_rel).read_text(encoding="utf-8")
             self.assertIn("Corporate Tax Only (0% VAT)", doc_text)
             self.assertIn("PBKDF2-SHA256 (120,000 iterations)", doc_text)
+
+        # 5. Verify professional UX design tokens, collapsible sidebar, and Quick-Jump Command Palette
+        style_bundle = "\n".join(
+            (APP_DIR / name).read_text(encoding="utf-8")
+            for name in ("style.css", "components.css", "theme-pro.css", "welcome.css", "admin.css")
+        )
+        for token in ("--color-surface-canvas", "--color-surface-elevated", "--color-border-focus", "tabular-nums"):
+            self.assertIn(token, style_bundle)
+        html_bundle = "\n".join(
+            [(APP_DIR / "index.html").read_text(encoding="utf-8"), *(p.read_text(encoding="utf-8") for p in sorted(APP_DIR.glob("views-*.js")))]
+        )
+        for ux_id in ("btnSidebarToggle", "btnQuickJump", "quickJumpModal", "quickJumpInput", "quickJumpList"):
+            self.assertIn(ux_id, html_bundle)
+        self.assertIn("sidebar-collapsed", script_js)
 
 
 if __name__ == "__main__":

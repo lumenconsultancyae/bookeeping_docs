@@ -37,19 +37,10 @@ AGY_API_SECRET = os.environ.get("AGY_API_SECRET", "").strip()
 REQUIRED_CLIENT_HEADER_VALUE = os.environ.get("AGY_CLIENT_HEADER_VALUE", "lumen-bookkeeping-web").strip()
 REQUIRE_ORIGIN = os.environ.get("AGY_REQUIRE_ORIGIN", "false").strip().lower() in ("1", "true", "yes")
 DEFAULT_ALLOWED_ORIGINS = (
-    "https://bookeeping.lumenconsultancy.net",
-    "https://bookkeeping.lumenconsultancy.net",
-    "https://lumen-bookkeeping.pages.dev",
-    "http://localhost:9091",
-    "http://127.0.0.1:9091",
-    "http://localhost:8199",
-    "http://127.0.0.1:8199",
-    "http://localhost:8088",
-    "http://127.0.0.1:8088",
-    "http://localhost:8086",
-    "http://127.0.0.1:8086",
-    "http://bookkeeping-web",
-    "http://bookkeeping-web:80",
+    "https://bookeeping.lumenconsultancy.net", "https://bookkeeping.lumenconsultancy.net",
+    "https://lumen-bookkeeping.pages.dev", "http://localhost:9091", "http://127.0.0.1:9091",
+    "http://localhost:8199", "http://127.0.0.1:8199", "http://localhost:8088", "http://127.0.0.1:8088",
+    "http://localhost:8086", "http://127.0.0.1:8086", "http://bookkeeping-web", "http://bookkeeping-web:80",
 )
 ALLOWED_ORIGINS = tuple(
     origin.strip().rstrip("/")
@@ -57,24 +48,15 @@ ALLOWED_ORIGINS = tuple(
     if origin.strip()
 )
 
-CHART_JS_SHIM = """
-(function(window) {
+CHART_JS_SHIM = """(function(window) {
     class Chart {
-        constructor(ctx, config) {
-            this.ctx = ctx;
-            this.config = config || {};
-            this._renderCanvasPreview();
-        }
+        constructor(ctx, config) { this.ctx = ctx; this.config = config || {}; this._renderCanvasPreview(); }
         _renderCanvasPreview() {
             try {
                 const canvas = this.ctx && this.ctx.canvas ? this.ctx.canvas : this.ctx;
                 if (!canvas || !canvas.getContext) return;
-                const c = canvas.getContext('2d');
-                const w = canvas.width || 600;
-                const h = canvas.height || 260;
-                c.clearRect(0, 0, w, h);
-                c.fillStyle = '#f8fafc';
-                c.fillRect(0, 0, w, h);
+                const c = canvas.getContext('2d'), w = canvas.width || 600, h = canvas.height || 260;
+                c.clearRect(0, 0, w, h); c.fillStyle = '#f8fafc'; c.fillRect(0, 0, w, h);
                 const labels = (this.config.data && this.config.data.labels) || [];
                 const datasets = (this.config.data && this.config.data.datasets) || [];
                 const barWidth = Math.max(16, Math.floor((w - 80) / Math.max(labels.length * 3, 1)));
@@ -86,9 +68,7 @@ CHART_JS_SHIM = """
                         c.fillStyle = ds.backgroundColor || (dIdx === 0 ? '#10b981' : '#f43f5e');
                         c.fillRect(xBase + dIdx * (barWidth + 4), h - 35 - barH, barWidth, barH);
                     });
-                    c.fillStyle = '#475569';
-                    c.font = '12px sans-serif';
-                    c.fillText(String(label), xBase, h - 15);
+                    c.fillStyle = '#475569'; c.font = '12px sans-serif'; c.fillText(String(label), xBase, h - 15);
                 });
             } catch (e) {}
         }
@@ -96,55 +76,37 @@ CHART_JS_SHIM = """
         update() { this._renderCanvasPreview(); }
     }
     window.Chart = Chart;
-})(window);
-"""
+})(window);"""
 
-PDF_JS_SHIM = """
-(function(window) {
+PDF_JS_SHIM = """(function(window) {
     const pdfjsLib = {
         GlobalWorkerOptions: { workerSrc: '' },
-        getDocument: function(params) {
-            return {
-                promise: Promise.resolve({
-                    numPages: 1,
-                    getPage: function(pageNum) {
-                        return Promise.resolve({
-                            getViewport: function(opts) {
-                                return { width: 600, height: 800, scale: (opts && opts.scale) || 1 };
-                            },
-                            render: function(renderCtx) {
-                                try {
-                                    if (renderCtx && renderCtx.canvasContext) {
-                                        const ctx = renderCtx.canvasContext;
-                                        ctx.fillStyle = '#ffffff';
-                                        ctx.fillRect(0, 0, 600, 800);
-                                        ctx.fillStyle = '#0f172a';
-                                        ctx.font = '16px sans-serif';
-                                        ctx.fillText('PDF Document Page ' + pageNum, 40, 60);
-                                    }
-                                } catch (e) {}
-                                return { promise: Promise.resolve() };
-                            },
-                            getTextContent: function() {
-                                return Promise.resolve({
-                                    items: []
-                                });
+        getDocument: function() {
+            return { promise: Promise.resolve({ numPages: 1, getPage: function(pageNum) {
+                return Promise.resolve({
+                    getViewport: function(opts) { return { width: 600, height: 800, scale: (opts && opts.scale) || 1 }; },
+                    render: function(renderCtx) {
+                        try {
+                            if (renderCtx && renderCtx.canvasContext) {
+                                const ctx = renderCtx.canvasContext;
+                                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 600, 800);
+                                ctx.fillStyle = '#0f172a'; ctx.font = '16px sans-serif';
+                                ctx.fillText('PDF Document Page ' + pageNum, 40, 60);
                             }
-                        });
-                    }
-                })
-            };
+                        } catch (e) {}
+                        return { promise: Promise.resolve() };
+                    },
+                    getTextContent: function() { return Promise.resolve({ items: [] }); }
+                });
+            } }) };
         }
     };
-    window.pdfjsLib = pdfjsLib;
-    window['pdfjs-dist/build/pdf'] = pdfjsLib;
-})(window);
-"""
+    window.pdfjsLib = pdfjsLib; window['pdfjs-dist/build/pdf'] = pdfjsLib;
+})(window);"""
 
 
 class PredictionServiceError(Exception):
     """Base structured exception for prediction HTTP error translation."""
-
     status_code: int = 500
     error_code: str = "internal_error"
     public_message: str = "An unexpected error occurred while processing the prediction request."
@@ -157,62 +119,34 @@ class PredictionServiceError(Exception):
 
 
 class InvalidPredictionRequestError(PredictionServiceError):
-    """Raised when the client submits malformed JSON, invalid types, or corrupt Base64."""
-
-    status_code = 400
-    error_code = "invalid_request"
-    public_message = "Invalid prediction request payload."
+    status_code, error_code, public_message = 400, "invalid_request", "Invalid prediction request payload."
 
 
 class UnauthorizedPredictionRequestError(PredictionServiceError):
-    """Raised when a request lacks the required application client header or proxy shared secret."""
-
-    status_code = 401
-    error_code = "unauthorized"
+    status_code, error_code = 401, "unauthorized"
     public_message = "Unauthorized: prediction endpoint is restricted to the Lumen Bookkeeping application."
 
 
 class ForbiddenOriginPredictionError(PredictionServiceError):
-    """Raised when a request originates from an untrusted external domain."""
-
-    status_code = 403
-    error_code = "forbidden_origin"
+    status_code, error_code = 403, "forbidden_origin"
     public_message = "Forbidden: request origin is not authorized to access this service."
 
 
 class PayloadTooLargeError(PredictionServiceError):
-    """Raised when Content-Length exceeds MAX_REQUEST_BYTES."""
-
-    status_code = 413
-    error_code = "payload_too_large"
-    public_message = "Request payload exceeds the maximum allowed size."
+    status_code, error_code, public_message = 413, "payload_too_large", "Request payload exceeds the maximum allowed size."
 
 
 class PredictionTimeoutError(PredictionServiceError):
-    """Raised when the `agy` CLI subprocess exceeds SUBPROCESS_TIMEOUT_SECONDS."""
-
-    status_code = 504
-    error_code = "prediction_timeout"
-    public_message = "AI prediction timed out."
+    status_code, error_code, public_message = 504, "prediction_timeout", "AI prediction timed out."
 
 
 class UpstreamPredictionError(PredictionServiceError):
-    """Raised when the `agy` CLI subprocess exits with a non-zero code."""
-
-    status_code = 502
-    error_code = "upstream_prediction_error"
-    public_message = "AI prediction engine failed to process the request."
+    status_code, error_code, public_message = 502, "upstream_prediction_error", "AI prediction engine failed to process the request."
 
 
 def build_error_envelope(error_code: str, message: str) -> dict:
     """Return a consistent JSON error envelope that preserves the `text` fallback for `script.js`."""
-    return {
-        "error": {
-            "code": error_code,
-            "message": message,
-        },
-        "text": "```json\n{}\n```",
-    }
+    return {"error": {"code": error_code, "message": message}, "text": "```json\n{}\n```"}
 
 
 def _sanitize_filename(name: str, index: int, mime: str) -> str:
@@ -239,13 +173,10 @@ def _parse_multipart_form_data(content_type: str, body: bytes) -> tuple[str, lis
     msg = BytesParser(policy=default_email_policy).parsebytes(raw_headers + body)
     question = ""
     uploads: list[dict] = []
-
     if not msg.is_multipart():
         raise InvalidPredictionRequestError("Malformed multipart/form-data payload.")
-
     for part in msg.iter_parts():
-        disposition = part.get_content_disposition()
-        if disposition != "form-data":
+        if part.get_content_disposition() != "form-data":
             continue
         field_name = part.get_param("name", header="content-disposition")
         filename = part.get_filename()
@@ -253,16 +184,9 @@ def _parse_multipart_form_data(content_type: str, body: bytes) -> tuple[str, lis
         if filename:
             mime = part.get_content_type() or "application/octet-stream"
             b64_str = base64.b64encode(payload_bytes).decode("ascii")
-            uploads.append(
-                {
-                    "name": filename,
-                    "mime": mime,
-                    "data": f"data:{mime};base64,{b64_str}",
-                }
-            )
+            uploads.append({"name": filename, "mime": mime, "data": f"data:{mime};base64,{b64_str}"})
         elif field_name == "question":
             question = payload_bytes.decode("utf-8", errors="replace")
-
     return question, uploads
 
 
@@ -272,26 +196,19 @@ def _parse_json_prediction_request(body: bytes) -> tuple[str, list[dict]]:
         decoded = body.decode("utf-8") if body else "{}"
         payload = json.loads(decoded or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise InvalidPredictionRequestError(
-            "Request body must be valid UTF-8 JSON.",
-            internal_detail=str(exc),
-        ) from exc
-
+        raise InvalidPredictionRequestError("Request body must be valid UTF-8 JSON.", internal_detail=str(exc)) from exc
     if not isinstance(payload, dict):
         raise InvalidPredictionRequestError("JSON request payload must be an object.")
-
     raw_question = payload.get("question", "")
     if raw_question is None:
         raw_question = ""
     if not isinstance(raw_question, str):
         raise InvalidPredictionRequestError("Field 'question' must be a string.")
-
     raw_uploads = payload.get("uploads", [])
     if raw_uploads is None:
         raw_uploads = []
     if not isinstance(raw_uploads, list) or any(not isinstance(u, dict) for u in raw_uploads):
         raise InvalidPredictionRequestError("Field 'uploads' must be a list of objects.")
-
     return raw_question, raw_uploads
 
 
@@ -307,17 +224,10 @@ def _write_uploads_to_dir(uploads: list[dict], target_dir: Path) -> list[Path]:
             raise InvalidPredictionRequestError("Upload 'data' field must be a base64 string.")
         if not data_val:
             continue
-
         mime = str(item.get("mime") or "image/jpeg")
         raw_name = item.get("name")
-        name_str = raw_name if isinstance(raw_name, str) else ""
-        safe_name = _sanitize_filename(name_str, idx, mime)
-
-        if "," in data_val and data_val.startswith("data:"):
-            _, b64_payload = data_val.split(",", 1)
-        else:
-            b64_payload = data_val
-
+        safe_name = _sanitize_filename(raw_name if isinstance(raw_name, str) else "", idx, mime)
+        b64_payload = data_val.split(",", 1)[1] if ("," in data_val and data_val.startswith("data:")) else data_val
         try:
             file_bytes = base64.b64decode(b64_payload, validate=True)
         except (binascii.Error, ValueError) as exc:
@@ -325,14 +235,11 @@ def _write_uploads_to_dir(uploads: list[dict], target_dir: Path) -> list[Path]:
                 f"Invalid base64 encoding in upload at index {idx}.",
                 internal_detail=str(exc),
             ) from exc
-
         file_path = (resolved_target_dir / safe_name).resolve()
         if not file_path.is_relative_to(resolved_target_dir) or file_path == resolved_target_dir:
             raise InvalidPredictionRequestError("Invalid upload filename.")
-
         file_path.write_bytes(file_bytes)
         saved_paths.append(file_path)
-
     return saved_paths
 
 
@@ -342,7 +249,6 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
     base_tmp.mkdir(parents=True, exist_ok=True)
     req_dir = (base_tmp / f"req_{uuid.uuid4().hex[:12]}").resolve()
     req_dir.mkdir(parents=True, exist_ok=True)
-
     try:
         saved_files = _write_uploads_to_dir(uploads, req_dir)
         if saved_files:
@@ -374,33 +280,16 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
                 "- Respond directly and helpfully to the user prompt below:\n\n"
                 f"{question}"
             )
-
         cmd = [
-            "agy",
-            "--mode",
-            "accept-edits",
-            "--dangerously-skip-permissions",
-            "--disable-slash-commands",
-            "--output-format",
-            "json",
-            "--model",
-            AGY_MODEL,
-            "--print-timeout",
-            AGY_TIMEOUT,
-            "--add-dir",
-            str(req_dir),
-            "--print",
-            full_prompt,
+            "agy", "--mode", "accept-edits", "--dangerously-skip-permissions",
+            "--disable-slash-commands", "--output-format", "json",
+            "--model", AGY_MODEL, "--print-timeout", AGY_TIMEOUT,
+            "--add-dir", str(req_dir), "--print", full_prompt,
         ]
-
         try:
             proc = subprocess.run(
-                cmd,
-                cwd=str(req_dir),
-                capture_output=True,
-                text=True,
-                timeout=SUBPROCESS_TIMEOUT_SECONDS,
-                check=False,
+                cmd, cwd=str(req_dir), capture_output=True, text=True,
+                timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise PredictionTimeoutError(
@@ -410,7 +299,6 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
 
         stdout = (proc.stdout or "").strip()
         stderr = (proc.stderr or "").strip()
-
         parsed_json: dict | None = None
         for line in reversed(stdout.splitlines()):
             line = line.strip()
@@ -422,28 +310,18 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
                         break
                 except json.JSONDecodeError:
                     continue
-
         if parsed_json is not None:
             response_text = str(parsed_json.get("response") or "")
             conv_id = str(parsed_json.get("conversation_id") or "")
             status = str(parsed_json.get("status") or "SUCCESS")
             print(f"[agy] Completed conversation_id={conv_id} status={status}", flush=True)
-            return {
-                "text": response_text,
-                "conversation_id": conv_id,
-                "status": status,
-            }
-
+            return {"text": response_text, "conversation_id": conv_id, "status": status}
         if proc.returncode != 0:
             raise UpstreamPredictionError(
                 "AI prediction engine failed to process the request.",
                 internal_detail=f"agy exited with code {proc.returncode}: {stderr or stdout}",
             )
-
-        return {
-            "text": stdout,
-            "status": "SUCCESS",
-        }
+        return {"text": stdout, "status": "SUCCESS"}
     finally:
         shutil.rmtree(req_dir, ignore_errors=True)
 
@@ -491,8 +369,7 @@ def _is_allowed_origin(origin: str | None) -> bool:
     normalized = _extract_origin_from_url(origin or "")
     if not normalized:
         return False
-    allowed_lower = {item.lower() for item in ALLOWED_ORIGINS}
-    if normalized in allowed_lower:
+    if normalized in {item.lower() for item in ALLOWED_ORIGINS}:
         return True
     if re.match(r"^https://[a-z0-9-]+\.lumen-bookkeeping\.pages\.dev$", normalized):
         return True
@@ -502,12 +379,7 @@ def _is_allowed_origin(origin: str | None) -> bool:
 
 
 def _verify_prediction_request_security(headers: Mapping[str, str]) -> str | None:
-    """Enforce multi-layer application security on `/api/v1/prediction/*` requests.
-
-    1. When `AGY_API_SECRET` is configured, verifies `X-Agy-Proxy-Secret` in constant time.
-    2. Verifies the `X-Lumen-Client: lumen-bookkeeping-web` application handshake header.
-    3. Verifies `Origin` (or `Referer`) against the trusted application origin allowlist.
-    """
+    """Enforce proxy secret, `X-Lumen-Client` handshake, and Origin/Referer allowlist on `/api/*`."""
     if AGY_API_SECRET:
         provided_secret = _get_header_case_insensitive(headers, "X-Agy-Proxy-Secret")
         if not provided_secret or not hmac.compare_digest(
@@ -518,18 +390,15 @@ def _verify_prediction_request_security(headers: Mapping[str, str]) -> str | Non
                 "Unauthorized: valid proxy authentication secret is required.",
                 internal_detail="Missing or invalid X-Agy-Proxy-Secret header",
             )
-
     client_header = _get_header_case_insensitive(headers, "X-Lumen-Client")
     if client_header != REQUIRED_CLIENT_HEADER_VALUE:
         raise UnauthorizedPredictionRequestError(
             "Unauthorized: prediction endpoint is restricted to the Lumen Bookkeeping application.",
             internal_detail=f"Missing or invalid X-Lumen-Client header: {client_header!r}",
         )
-
     raw_origin = _get_header_case_insensitive(headers, "Origin")
     raw_referer = _get_header_case_insensitive(headers, "Referer")
     candidate_origin = _extract_origin_from_url(raw_origin) if raw_origin else _extract_origin_from_url(raw_referer)
-
     if raw_origin or raw_referer:
         if not candidate_origin or not _is_allowed_origin(candidate_origin):
             raise ForbiddenOriginPredictionError(
@@ -537,13 +406,11 @@ def _verify_prediction_request_security(headers: Mapping[str, str]) -> str | Non
                 internal_detail=f"Rejected untrusted origin={raw_origin!r} referer={raw_referer!r}",
             )
         return candidate_origin
-
     if REQUIRE_ORIGIN:
         raise ForbiddenOriginPredictionError(
             "Forbidden: request origin header is required.",
             internal_detail="Missing both Origin and Referer headers while AGY_REQUIRE_ORIGIN is enabled",
         )
-
     return None
 
 
@@ -600,14 +467,7 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
             self._send_bytes(b"/* local font shim */\n", "text/css; charset=utf-8")
             return
         if parsed.path in ("/", "/health", "/api/v1/ping"):
-            self._send_json(
-                {
-                    "status": "ok",
-                    "engine": "agy",
-                    "model": AGY_MODEL,
-                },
-                status=200,
-            )
+            self._send_json({"status": "ok", "engine": "agy", "model": AGY_MODEL}, status=200)
             return
         self._send_json(build_error_envelope("not_found", "Endpoint not found."), status=404)
 
@@ -616,26 +476,20 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
         if not parsed.path.startswith("/api/"):
             self._send_json(build_error_envelope("not_found", "Endpoint not found."), status=404)
             return
-
         try:
             _verify_prediction_request_security(self.headers)
             content_len = _validate_content_length(self.headers.get("Content-Length"))
             body = self.rfile.read(content_len) if content_len > 0 else b""
             content_type = self.headers.get("Content-Type", "")
-
             if "multipart/form-data" in content_type:
                 question, uploads = _parse_multipart_form_data(content_type, body)
             else:
                 question, uploads = _parse_json_prediction_request(body)
-
             result = run_agy_prediction(question=question, uploads=uploads)
             self._send_json(result, status=200)
         except PredictionServiceError as exc:
             print(f"[agy-error] {exc.error_code}: {exc.internal_detail}", file=sys.stderr, flush=True)
-            self._send_json(
-                build_error_envelope(exc.error_code, exc.public_message),
-                status=exc.status_code,
-            )
+            self._send_json(build_error_envelope(exc.error_code, exc.public_message), status=exc.status_code)
         except Exception as exc:  # noqa: BLE001
             print(f"[agy-error] unexpected: {exc!r}", file=sys.stderr, flush=True)
             self._send_json(
@@ -656,7 +510,6 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, _handle_shutdown)
     signal.signal(signal.SIGINT, _handle_shutdown)
-
     print(f"Starting agy prediction service on http://{HOST}:{PORT} (model={AGY_MODEL})", flush=True)
     try:
         server.serve_forever()
