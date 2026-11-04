@@ -282,6 +282,50 @@ class Art59TaxInvoiceAndCreditNoteUnitTests(unittest.TestCase):
         self.assertIn("CREDIT_NOTE", faf_js)
 
 
+class PrepaidCreditsAndDrawdownUnitTests(unittest.TestCase):
+    """Verify SME-universal Prepaid Balances, Deferred Revenue (2150), COGS routing, and Usage/Drawdown tracking."""
+
+    def test_coa_and_faf_include_2150_deferred_revenue_customer_advances(self) -> None:
+        script_js = (APP_DIR / "script.js").read_text(encoding="utf-8")
+        faf_js = (APP_DIR / "faf-export.js").read_text(encoding="utf-8")
+
+        self.assertIn("2150", script_js)
+        self.assertIn("Deferred Revenue / Customer Advances", script_js)
+        self.assertIn("2150", faf_js)
+        self.assertIn("Deferred Revenue / Customer Advances", faf_js)
+
+    def test_index_html_contains_universal_accrual_accounts_mode_and_usage_modal(self) -> None:
+        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+
+        for token in (
+            'value="5000 Cost of Goods Sold"',
+            'value="2150 Deferred Revenue / Customer Advances"',
+            'value="4100 Service Revenue"',
+            'value="4000 Sales Revenue"',
+            'id="accrualMode"',
+            'id="editAccrualMode"',
+            'id="recordAccrualUsageModal"',
+            'id="recordUsageAccrualId"',
+            'id="recordUsageDate"',
+            'id="recordUsageAmount"',
+            'id="recordUsageNote"',
+            'id="btnSaveAccrualUsage"',
+        ):
+            self.assertIn(token, index_html)
+
+    def test_script_js_implements_cogs_prepaid_routing_and_usage_drawdown_entries(self) -> None:
+        script_js = (APP_DIR / "script.js").read_text(encoding="utf-8")
+
+        for symbol in (
+            "resolvePrepaidExpenseAccount",
+            "recordAccrualUsage",
+            "usageEntries",
+            "scheduleMode",
+            "USE-",
+        ):
+            self.assertIn(symbol, script_js)
+
+
 if __name__ == "__main__":
     unittest.main()
 
