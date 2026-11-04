@@ -27,6 +27,8 @@ Feature: Financial Statements, UAE VAT 201, Corporate Tax, Budgeting, Forecast, 
     And the user submits the prepared journal entry
     And the user navigates to the "VAT" view
     Then the UAE VAT Return Summary should display formatted Output VAT, Input VAT, and Net VAT values
+    When the user clicks the "Export FTA Audit File (FAF)" button in the Tax module
+    Then the exported FTA Audit File CSV should contain Company Header, Master Data, Purchase Lines, Sales Lines, and balanced General Ledger entries
     When the user navigates to the "Corporate Tax" view
     Then the UAE Corporate Tax Summary should reflect a positive Add-Backs balance
 

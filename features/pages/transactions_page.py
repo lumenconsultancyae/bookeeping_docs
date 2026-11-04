@@ -24,10 +24,14 @@ class TransactionsPage(BasePage):
         rate: str,
         vat_treatment: str = "standard",
         revenue_account: str = "4100 Service Revenue",
+        supply_date: str | None = None,
+        discount: str = "0.00",
     ) -> str:
         """Populate the Customer Sales Invoice form and return the generated `#custInvoiceNum`."""
         self.driver.execute_script("window.isVatApplicable = arguments[0] === 'standard';", vat_treatment)
         self.fill_input("custDate", invoice_date)
+        if supply_date:
+            self.fill_input("custSupplyDate", supply_date)
         self.fill_input("custDueDate", due_date)
         self.fill_input("custEntity", customer_name)
         self.select_by_value_or_text("custRevenueAccount", revenue_account)
@@ -39,12 +43,17 @@ class TransactionsPage(BasePage):
                 const desc = row.querySelector('.item-desc');
                 const qty = row.querySelector('.item-qty');
                 const rate = row.querySelector('.item-rate');
+                const disc = row.querySelector('.item-discount');
                 desc.value = arguments[0];
                 desc.dispatchEvent(new Event('input', {bubbles: true}));
                 qty.value = arguments[1];
                 qty.dispatchEvent(new Event('input', {bubbles: true}));
                 rate.value = arguments[2];
                 rate.dispatchEvent(new Event('input', {bubbles: true}));
+                if (disc) {
+                    disc.value = arguments[4];
+                    disc.dispatchEvent(new Event('input', {bubbles: true}));
+                }
             }
             const radios = document.querySelectorAll('input[name="vatToggle"]');
             radios.forEach(r => {
@@ -59,12 +68,14 @@ class TransactionsPage(BasePage):
             str(qty),
             str(rate),
             vat_treatment,
+            str(discount),
         )
         return self.get_value_by_id("custInvoiceNum")
 
     def get_customer_invoice_summary(self) -> dict[str, str]:
-        """Return the calculated subtotal, VAT, and total displayed on the invoice form."""
+        """Return the calculated discount, subtotal, VAT, and total displayed on the invoice form."""
         return {
+            "discount": self.get_text_by_id("custDiscountDisplay"),
             "subtotal": self.get_text_by_id("custSubtotalDisplay"),
             "vat": self.get_text_by_id("custVatDisplay"),
             "total": self.get_text_by_id("custTotalDisplay"),
@@ -85,6 +96,84 @@ class TransactionsPage(BasePage):
         alert_text = self.accept_alert_if_present(timeout=3.0)
         self.post_latest_ledger_entry()
         return alert_text
+
+    def fill_tax_credit_note_from_invoice(
+        self,
+        original_invoice_num: str,
+        credit_date: str,
+        supply_date: str,
+        reason: str,
+        item_description: str,
+        qty: str,
+        rate: str,
+        discount: str = "0.00",
+        vat_rate: str = "5",
+    ) -> str:
+        """Populate the Tax Credit Note (`CRN-####`) form referencing `original_invoice_num`."""
+        self.driver.execute_script(
+            """
+            if (window.TaxCreditNotes && typeof window.TaxCreditNotes.populateOriginalInvoiceOptions === 'function') {
+                window.TaxCreditNotes.populateOriginalInvoiceOptions(arguments[0]);
+            }
+            const origSelect = document.getElementById('crnOriginalInvoice');
+            if (origSelect) {
+                origSelect.value = arguments[0];
+                origSelect.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+            const dateEl = document.getElementById('crnDate');
+            if (dateEl) dateEl.value = arguments[1];
+            const supEl = document.getElementById('crnSupplyDate');
+            if (supEl) supEl.value = arguments[2];
+            const reasonEl = document.getElementById('crnReason');
+            if (reasonEl) reasonEl.value = arguments[3];
+
+            const list = document.getElementById('crnLineItemsList');
+            if (list) {
+                list.innerHTML = '';
+                window.addCrnLineItem({
+                    description: arguments[4],
+                    qty: arguments[5],
+                    rate: arguments[6],
+                    discount: arguments[7],
+                    vatRate: arguments[8]
+                });
+            }
+            if (typeof window.calcCrnTotals === 'function') window.calcCrnTotals();
+            """,
+            original_invoice_num,
+            credit_date,
+            supply_date,
+            reason,
+            item_description,
+            str(qty),
+            str(rate),
+            str(discount),
+            str(vat_rate),
+        )
+        return self.get_value_by_id("crnNumber")
+
+    def get_credit_note_summary(self) -> dict[str, str]:
+        """Return the calculated discount, subtotal, VAT, and total displayed on the Tax Credit Note form."""
+        return {
+            "discount": self.get_text_by_id("crnDiscountDisplay"),
+            "subtotal": self.get_text_by_id("crnSubtotalDisplay"),
+            "vat": self.get_text_by_id("crnVatDisplay"),
+            "total": self.get_text_by_id("crnTotalDisplay"),
+        }
+
+    def preview_tax_credit_note(self) -> str:
+        """Click `#previewCrnBtn` and return the rendered Tax Credit Note modal text."""
+        self.click_id("previewCrnBtn")
+        self.wait_until(lambda d: d.find_element(By.ID, "invoiceModal").is_displayed())
+        return self.get_text_by_id("modalBody")
+
+    def submit_tax_credit_note(self) -> str | None:
+        """Submit `#creditNoteForm` and return any alert text."""
+        self.dismiss_modals_if_present()
+        self.driver.execute_script(
+            "document.getElementById('creditNoteForm').requestSubmit();"
+        )
+        return self.accept_alert_if_present(timeout=3.0)
 
     # --- Supplier Bills AI Extraction (`#view-supplier`) ---
 

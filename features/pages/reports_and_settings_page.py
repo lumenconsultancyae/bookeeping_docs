@@ -60,6 +60,24 @@ class ReportsAndSettingsPage(BasePage):
             "box14": self.get_text_by_id("vatBox14"),
         }
 
+    def export_fta_audit_file(self) -> dict[str, str]:
+        """Click `#btnExportFaf` in `#view-tax` and return the exported FTA Audit File metadata and CSV."""
+        self.click_id("btnExportFaf")
+        result = self.driver.execute_script(
+            """
+            const last = window.__lastExportedFAF || {};
+            const totals = (last.data && last.data.totals) || {};
+            return {
+                filename: String(last.filename || ''),
+                csv: String(last.csv || ''),
+                gl_debit: String(totals.glDebitAED || '0.00'),
+                gl_credit: String(totals.glCreditAED || '0.00'),
+                banner: (document.getElementById('fafStatusBanner') && document.getElementById('fafStatusBanner').textContent) || ''
+            };
+            """
+        )
+        return result or {}
+
     # --- UAE Corporate Tax Report (`#view-corp-tax`) ---
 
     def get_corporate_tax_summary(self) -> dict[str, str]:

@@ -19,6 +19,21 @@ Feature: Commercial Transactions, AI Document Extraction, Quotes, Purchase Order
     And the user loads the Statement of Account for "ALL_AR"
     Then the Statement of Account should list the customer invoice with a positive receivable balance
 
+  @art59 @einvoice
+  Scenario: Issuing an Art. 59 Tax Invoice with Date of Supply, line discount, and per-line VAT followed by a Tax Credit Note (CRN-####)
+    When the user navigates to the "Sales Invoices" view
+    And the user fills an Art. 59 customer invoice for "Al Masa Advisory LLC" issued "2026-10-10" supplied "2026-10-05" with item "VAT Compliance Audit" quantity "2" at rate "1000.00" AED discount "200.00" AED and "standard" VAT
+    Then the customer invoice summary should show discount "200.00", subtotal "1,800.00", VAT "90.00", and total "1,890.00"
+    When the user previews the customer E-Invoice
+    Then the E-Invoice preview modal should display Date of Supply "2026-10-05", Discount, VAT Rate, and VAT Amount
+    When the user submits the customer invoice to the ledger
+    And the user issues a Tax Credit Note against the last invoice with reason "Agreed Price / Discount Adjustment", item "Partial Scope Credit", quantity "1", rate "500.00" AED, discount "50.00" AED, and "5" percent VAT
+    Then the Tax Credit Note summary should show discount "50.00", subtotal "450.00", VAT "22.50", and total "472.50"
+    When the user previews and submits the Tax Credit Note to the ledger
+    And the user navigates to the "Statement of Account" view
+    And the user loads the Statement of Account for "ALL_AR"
+    Then the Statement of Account should list both the customer invoice and the Tax Credit Note
+
   @ai
   Scenario: Uploading a Supplier Bill uses AI extraction and posts the reviewed bill to the General Ledger
     When the user navigates to the "Supplier Bills" view

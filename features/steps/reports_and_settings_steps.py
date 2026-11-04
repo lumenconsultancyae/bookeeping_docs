@@ -54,6 +54,40 @@ def step_verify_vat_return_summary(context) -> None:
         )
 
 
+@when('the user clicks the "Export FTA Audit File (FAF)" button in the Tax module')
+def step_click_export_fta_audit_file(context) -> None:
+    context.last_faf_export = context.reports_page.export_fta_audit_file()
+
+
+@then(
+    "the exported FTA Audit File CSV should contain Company Header, Master Data, Purchase Lines, Sales Lines, and balanced General Ledger entries"
+)
+def step_verify_exported_fta_audit_file_csv(context) -> None:
+    export = getattr(context, "last_faf_export", None) or {}
+    csv_text = export.get("csv", "")
+    assert export.get("filename", "").endswith(".csv"), (
+        f"Expected .csv filename from Export FTA Audit File (FAF), got '{export.get('filename')}'"
+    )
+    for marker in (
+        "CompInfo",
+        "CompEnd",
+        "MasterData",
+        "MasterDataEnd",
+        "PurcData",
+        "PurcDataEnd",
+        "SuppData",
+        "SuppDataEnd",
+        "GLData",
+        "GLDataEnd",
+    ):
+        assert marker in csv_text, f"Expected FTA Audit File marker '{marker}' in exported CSV"
+    gl_debit = _parse_currency(export.get("gl_debit", "0"))
+    gl_credit = _parse_currency(export.get("gl_credit", "0"))
+    assert gl_debit > 0 and abs(gl_debit - gl_credit) < 0.01, (
+        f"Expected balanced GLData debits/credits > 0, got debit={gl_debit} credit={gl_credit}"
+    )
+
+
 @then("the UAE Corporate Tax Summary should reflect a positive Add-Backs balance")
 def step_verify_corporate_tax_add_backs(context) -> None:
     ct = context.reports_page.get_corporate_tax_summary()

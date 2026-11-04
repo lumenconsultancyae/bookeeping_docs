@@ -91,6 +91,152 @@ def step_verify_soa_customer_invoice(context) -> None:
     )
 
 
+@when(
+    'the user fills an Art. 59 customer invoice for "{customer_name}" issued "{invoice_date}" supplied "{supply_date}" with item "{item_desc}" quantity "{qty}" at rate "{rate}" AED discount "{discount}" AED and "{vat_treatment}" VAT'
+)
+def step_fill_art59_customer_invoice(
+    context,
+    customer_name: str,
+    invoice_date: str,
+    supply_date: str,
+    item_desc: str,
+    qty: str,
+    rate: str,
+    discount: str,
+    vat_treatment: str,
+) -> None:
+    unique_customer = f"{customer_name} {context.scenario_uid}"
+    context.last_invoice_customer = unique_customer
+    context.last_supply_date = supply_date
+    inv_num = context.transactions_page.fill_customer_invoice(
+        invoice_date=invoice_date,
+        due_date="2026-11-09",
+        customer_name=unique_customer,
+        item_description=item_desc,
+        qty=qty,
+        rate=rate,
+        vat_treatment=vat_treatment,
+        supply_date=supply_date,
+        discount=discount,
+    )
+    context.last_invoice_num = inv_num
+    context.created_resources.append(("customer", unique_customer))
+    context.created_resources.append(("ledger", inv_num))
+    context.created_resources.append(("ledger", unique_customer))
+
+
+@then(
+    'the customer invoice summary should show discount "{discount}", subtotal "{subtotal}", VAT "{vat}", and total "{total}"'
+)
+def step_verify_art59_customer_invoice_summary(
+    context,
+    discount: str,
+    subtotal: str,
+    vat: str,
+    total: str,
+) -> None:
+    summary = context.transactions_page.get_customer_invoice_summary()
+    assert float(summary["discount"].replace(",", "")) == float(discount.replace(",", "")), (
+        f"Expected discount '{discount}', got '{summary['discount']}'"
+    )
+    assert float(summary["subtotal"].replace(",", "")) == float(subtotal.replace(",", "")), (
+        f"Expected subtotal '{subtotal}', got '{summary['subtotal']}'"
+    )
+    assert float(summary["vat"].replace(",", "")) == float(vat.replace(",", "")), (
+        f"Expected VAT '{vat}', got '{summary['vat']}'"
+    )
+    assert float(summary["total"].replace(",", "")) == float(total.replace(",", "")), (
+        f"Expected total '{total}', got '{summary['total']}'"
+    )
+
+
+@then('the E-Invoice preview modal should display Date of Supply "{expected_supply_date}", Discount, VAT Rate, and VAT Amount')
+def step_verify_art59_einvoice_preview_fields(context, expected_supply_date: str) -> None:
+    preview_text = getattr(context, "einvoice_preview_text", "")
+    assert "TAX INVOICE" in preview_text, f"Expected 'TAX INVOICE' in preview, got:\n{preview_text[:400]}"
+    assert "Date of Supply" in preview_text and expected_supply_date in preview_text, (
+        f"Expected Date of Supply '{expected_supply_date}' in preview, got:\n{preview_text[:500]}"
+    )
+    assert "Discount" in preview_text, "Expected 'Discount' column/row in preview"
+    assert "VAT Rate" in preview_text, "Expected 'VAT Rate' column in preview"
+    assert "VAT Amount" in preview_text, "Expected 'VAT Amount' column in preview"
+    context.base_page.dismiss_modals_if_present()
+
+
+@when(
+    'the user issues a Tax Credit Note against the last invoice with reason "{reason}", item "{item_desc}", quantity "{qty}", rate "{rate}" AED, discount "{discount}" AED, and "{vat_rate}" percent VAT'
+)
+def step_issue_tax_credit_note(
+    context,
+    reason: str,
+    item_desc: str,
+    qty: str,
+    rate: str,
+    discount: str,
+    vat_rate: str,
+) -> None:
+    crn_num = context.transactions_page.fill_tax_credit_note_from_invoice(
+        original_invoice_num=context.last_invoice_num,
+        credit_date="2026-10-12",
+        supply_date=getattr(context, "last_supply_date", "2026-10-05"),
+        reason=reason,
+        item_description=item_desc,
+        qty=qty,
+        rate=rate,
+        discount=discount,
+        vat_rate=vat_rate,
+    )
+    context.last_crn_num = crn_num
+    context.created_resources.append(("ledger", crn_num))
+
+
+@then(
+    'the Tax Credit Note summary should show discount "{discount}", subtotal "{subtotal}", VAT "{vat}", and total "{total}"'
+)
+def step_verify_crn_summary(
+    context,
+    discount: str,
+    subtotal: str,
+    vat: str,
+    total: str,
+) -> None:
+    summary = context.transactions_page.get_credit_note_summary()
+    assert float(summary["discount"].replace(",", "")) == float(discount.replace(",", "")), (
+        f"Expected CRN discount '{discount}', got '{summary['discount']}'"
+    )
+    assert float(summary["subtotal"].replace(",", "")) == float(subtotal.replace(",", "")), (
+        f"Expected CRN subtotal '{subtotal}', got '{summary['subtotal']}'"
+    )
+    assert float(summary["vat"].replace(",", "")) == float(vat.replace(",", "")), (
+        f"Expected CRN VAT '{vat}', got '{summary['vat']}'"
+    )
+    assert float(summary["total"].replace(",", "")) == float(total.replace(",", "")), (
+        f"Expected CRN total '{total}', got '{summary['total']}'"
+    )
+
+
+@when("the user previews and submits the Tax Credit Note to the ledger")
+def step_preview_and_submit_crn(context) -> None:
+    preview_text = context.transactions_page.preview_tax_credit_note()
+    assert "TAX CREDIT NOTE" in preview_text, f"Expected 'TAX CREDIT NOTE' in preview, got:\n{preview_text[:400]}"
+    assert context.last_invoice_num in preview_text, (
+        f"Expected original invoice ref '{context.last_invoice_num}' in CRN preview"
+    )
+    context.base_page.dismiss_modals_if_present()
+    context.transactions_page.submit_tax_credit_note()
+
+
+@then("the Statement of Account should list both the customer invoice and the Tax Credit Note")
+def step_verify_soa_includes_crn(context) -> None:
+    soa = context.accounting_page.get_statement_kpis()
+    assert context.last_invoice_num in soa["table_text"], (
+        f"Expected invoice '{context.last_invoice_num}' in SOA table, got:\n{soa['table_text'][:500]}"
+    )
+    assert context.last_crn_num in soa["table_text"] or "Credit Note" in soa["table_text"], (
+        f"Expected credit note '{context.last_crn_num}' in SOA table, got:\n{soa['table_text'][:500]}"
+    )
+
+
 @when("the user uploads and analyzes a sample supplier invoice document")
 def step_upload_and_analyze_supplier_bill(context) -> None:
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
