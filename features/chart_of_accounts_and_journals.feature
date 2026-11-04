@@ -35,3 +35,11 @@ Feature: Chart of Accounts, Manual Journal Entries, Accruals, and Period Locking
     And the user attempts to delete the locked journal entry from the General Ledger
     Then the system should block the deletion with a closed period warning
     And the General Ledger should still contain the locked journal entry
+
+  @accrual @usage
+  Scenario: Tracking 2150 Deferred Revenue with Usage / Drawdown recognition updates accumulated and remaining balances
+    When the user navigates to the "Accruals" view
+    And the user creates a usage-based accrual schedule for "Annual Cloud Retainer Advance" of "6000.00" AED debiting "2150 Deferred Revenue / Customer Advances" and crediting "4100 Service Revenue" starting "2026-01-01"
+    And the user records a usage drawdown of "1500.00" AED on "Annual Cloud Retainer Advance" dated "2026-06-15" with note "Phase 1 Milestone Delivered"
+    Then the Accruals directory should show "Annual Cloud Retainer Advance" with accumulated recognition "1,500.00" and net balance "4,500.00"
+

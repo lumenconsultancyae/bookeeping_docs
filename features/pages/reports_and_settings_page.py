@@ -44,6 +44,13 @@ class ReportsAndSettingsPage(BasePage):
         )
         return self.get_text_by_id("cashflowContainer")
 
+    def get_equity_statement_text(self) -> str:
+        """Render and return the text of `#equityStatementContainer`."""
+        self.driver.execute_script(
+            "if (typeof window.renderEquityStatement === 'function') window.renderEquityStatement();"
+        )
+        return self.get_text_by_id("equityStatementContainer")
+
     # --- UAE VAT 201 Report (`#view-tax`) ---
 
     def get_vat_return_summary(self) -> dict[str, str]:
@@ -56,6 +63,11 @@ class ReportsAndSettingsPage(BasePage):
             "input_vat": self.get_text_by_id("vatInputSummary"),
             "net_vat": self.get_text_by_id("vatNetSummary"),
             "box1": self.get_text_by_id("vatBox1"),
+            "box1a": self.get_text_by_id("vatBox1a"),
+            "box1b": self.get_text_by_id("vatBox1b"),
+            "box3": self.get_text_by_id("vatBox3"),
+            "box4": self.get_text_by_id("vatBox4"),
+            "box5": self.get_text_by_id("vatBox5"),
             "box9": self.get_text_by_id("vatBox9"),
             "box14": self.get_text_by_id("vatBox14"),
         }
@@ -186,3 +198,53 @@ class ReportsAndSettingsPage(BasePage):
     def get_currency_rates_table_text(self) -> str:
         """Return the text of `#currencyRatesBody`."""
         return self.get_text_by_id("currencyRatesBody")
+
+    def seed_unconverted_supplier_bill(self, invoice_num: str, supplier_name: str, total: str) -> None:
+        """Insert a legacy supplier bill with no `currency` field into `bookkeeping_history_v2`."""
+        self.driver.execute_script(
+            """
+            const raw = localStorage.getItem('bookkeeping_history_v2') || '[]';
+            const history = JSON.parse(raw);
+            history.unshift({
+                id: 'fx_leg_' + arguments[0],
+                type: 'supplier',
+                status: 'posted',
+                date: '2026-09-10',
+                invoiceNum: arguments[0],
+                entityName: arguments[1],
+                subtotal: arguments[2],
+                tax: '0.00',
+                total: arguments[2],
+                drAcc: '6200 Software & SaaS',
+                crAcc: '2000 Accounts Payable'
+            });
+            localStorage.setItem('bookkeeping_history_v2', JSON.stringify(history));
+            """,
+            invoice_num,
+            supplier_name,
+            total,
+        )
+
+    def convert_legacy_supplier_bill_to_aed(self, invoice_num: str, currency_code: str) -> str:
+        """Tick the legacy supplier bill in `#fxFixBody`, convert to AED, and return `#fxFixMessage`."""
+        self.driver.execute_script(
+            """
+            const check = document.getElementById('fxFix_fx_leg_' + arguments[0]);
+            if (check) check.checked = true;
+            const sel = document.getElementById('fxFixCurrency');
+            if (sel && arguments[1]) sel.value = arguments[1];
+            const convertBtn = document.getElementById('fxFixConvert');
+            if (convertBtn) convertBtn.click();
+            const yesBtn = document.getElementById('fxFixYes');
+            if (yesBtn) yesBtn.click();
+            """,
+            invoice_num,
+            currency_code,
+        )
+        return self.get_text_by_id("fxFixMessage")
+
+    def undo_legacy_fx_conversion(self) -> str:
+        """Click `#fxFixUndo` and return `#fxFixMessage`."""
+        self.click_id("fxFixUndo")
+        return self.get_text_by_id("fxFixMessage")
+

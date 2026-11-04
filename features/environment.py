@@ -23,6 +23,7 @@ from features.pages.accounting_page import AccountingPage
 from features.pages.base_page import BasePage
 from features.pages.contacts_and_inventory_page import ContactsAndInventoryPage
 from features.pages.dashboard_page import DashboardPage
+from features.pages.expenses_and_admin_page import ExpensesAndAdminPage
 from features.pages.payroll_and_assets_page import PayrollAndAssetsPage
 from features.pages.reports_and_settings_page import ReportsAndSettingsPage
 from features.pages.transactions_page import TransactionsPage
@@ -84,6 +85,7 @@ def before_scenario(context, scenario) -> None:
     context.transactions_page = TransactionsPage(context.driver, context.base_url)
     context.payroll_page = PayrollAndAssetsPage(context.driver, context.base_url)
     context.reports_page = ReportsAndSettingsPage(context.driver, context.base_url)
+    context.expenses_admin_page = ExpensesAndAdminPage(context.driver, context.base_url)
 
 
 def after_step(context, step) -> None:

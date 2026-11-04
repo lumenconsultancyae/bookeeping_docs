@@ -67,3 +67,24 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     Then the document language should be "en" with direction "ltr"
     And the welcome hero heading should contain "Welcome to"
     When a verification screenshot "welcome_english_ltr" is captured
+
+  @legal @admin
+  Scenario: Viewing UAE legal modals on /welcome, testing Basic plan feature gating and upgrade request, and approving in Super-Admin Console (/admin)
+    When an unauthenticated visitor opens the application root
+    Then the browser should redirect to the "/welcome" entrypoint
+    When the visitor opens the "terms" legal modal on the Welcome page
+    Then the legal modal should display title "Terms of Service" and mention "UAE"
+    When the visitor opens the "privacy" legal modal on the Welcome page
+    Then the legal modal should display title "Privacy Policy" and mention "PDPL"
+    When the visitor opens the "refund" legal modal on the Welcome page
+    Then the legal modal should display title "Cancellation" and mention "Cancel"
+    When the visitor registers company "Al Noor Retail" with password "Lumen2026" on the "basic" plan
+    Then the "Quotes & Estimates" navigation item should be locked with a plan badge
+    When the user navigates to the "Settings" view
+    And the customer submits a plan upgrade request from Settings
+    Then the Settings Subscription Plan card should display "Upgrade requested: Advance (Pending Admin Approval)"
+    When the administrator signs in to the Super-Admin Console with email "admin@lumenconsultancy.net" and password "LumenAdmin2026"
+    Then the Super-Admin Console should display MRR metrics and list the registered company with a pending upgrade
+    When the administrator approves the pending upgrade request for the registered company
+    Then the Super-Admin Console should show no pending upgrade request for the registered company
+

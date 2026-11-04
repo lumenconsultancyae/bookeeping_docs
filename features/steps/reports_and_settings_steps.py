@@ -45,6 +45,15 @@ def step_verify_cashflow_statement(context, heading_one: str, heading_two: str) 
     )
 
 
+@then('the Statement of Equity should display "{heading_one}" and "{heading_two}"')
+def step_verify_equity_statement(context, heading_one: str, heading_two: str) -> None:
+    text = context.reports_page.get_equity_statement_text()
+    assert heading_one in text and heading_two in text, (
+        f"Expected '{heading_one}' and '{heading_two}' in Statement of Equity, got:\n{text[:500]}"
+    )
+
+
+
 @then("the UAE VAT Return Summary should display formatted Output VAT, Input VAT, and Net VAT values")
 def step_verify_vat_return_summary(context) -> None:
     vat = context.reports_page.get_vat_return_summary()
@@ -193,3 +202,40 @@ def step_verify_audit_log_entry(
     assert action_name in audit_text and detail_text in audit_text, (
         f"Expected '{action_name}' and '{detail_text}' in Audit Log, got:\n{audit_text[:500]}"
     )
+
+
+@when(
+    'a legacy unconverted supplier bill "{inv_prefix}" for "{supplier_name}" of "{amount}" in foreign currency exists'
+)
+def step_seed_legacy_supplier_bill(
+    context,
+    inv_prefix: str,
+    supplier_name: str,
+    amount: str,
+) -> None:
+    inv_num = f"{inv_prefix}-{context.scenario_uid}"
+    context.last_fx_invoice_num = inv_num
+    context.created_resources.append(("ledger", inv_num))
+    context.created_resources.append(("fx_backup", "1"))
+    context.reports_page.seed_unconverted_supplier_bill(inv_num, supplier_name, amount)
+
+
+@when('the user converts the legacy supplier bill from "{currency_code}" to AED in Settings')
+def step_convert_legacy_supplier_bill(context, currency_code: str) -> None:
+    context.fx_message = context.reports_page.convert_legacy_supplier_bill_to_aed(
+        context.last_fx_invoice_num, currency_code
+    )
+
+
+@then('the FX conversion status message should contain "{expected_text}"')
+def step_verify_fx_conversion_message(context, expected_text: str) -> None:
+    msg = getattr(context, "fx_message", "")
+    assert expected_text in msg, (
+        f"Expected FX status message to contain '{expected_text}', got '{msg}'"
+    )
+
+
+@when("the user undoes the last FX conversion in Settings")
+def step_undo_fx_conversion(context) -> None:
+    context.fx_message = context.reports_page.undo_legacy_fx_conversion()
+

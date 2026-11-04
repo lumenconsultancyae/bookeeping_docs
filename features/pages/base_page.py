@@ -47,6 +47,7 @@ class BasePage:
         "Sales Invoices": "view-customer",
         "Purchase Orders": "view-po",
         "Supplier Bills": "view-supplier",
+        "Expenses": "view-expense",
         "Chart of Accounts": "view-coa",
         "Journal Entries": "view-journal",
         "General Ledger": "view-ledger",
@@ -69,6 +70,7 @@ class BasePage:
         "Profit & Loss": "view-income-statement",
         "Balance Sheet": "view-balance-sheet",
         "Cash Flow": "view-cashflow",
+        "Statement of Equity": "view-equity-statement",
         "Trial Balance": "view-trial",
         "Audit Log": "view-audit",
         "Settings": "view-settings",
@@ -99,7 +101,7 @@ class BasePage:
             lambda d: d.execute_script("return document.readyState === 'complete'")
         )
         if self.driver.execute_script(
-            "return Boolean(window.LumenProfiles && !window.LumenProfiles.isAuthenticated());"
+            "return Boolean(window.LumenProfiles && (!window.LumenProfiles.isAuthenticated() || !window.LumenProfiles.isOwner()));"
         ):
             self.driver.execute_script(
                 "window.LumenProfiles.signIn(window.LumenProfiles.OWNER_ACCOUNT);"
@@ -193,8 +195,27 @@ class BasePage:
         target_id = self.VIEW_TARGET_MAP.get(view_label, view_label)
 
         def _click_and_verify(d: WebDriver) -> bool:
-            nav_el = d.find_element(By.CSS_SELECTOR, f'.nav-item[data-target="{target_id}"]')
-            d.execute_script("arguments[0].click();", nav_el)
+            nav_items = d.find_elements(By.CSS_SELECTOR, f'.nav-item[data-target="{target_id}"]')
+            if nav_items:
+                d.execute_script("arguments[0].click();", nav_items[0])
+            else:
+                d.execute_script(
+                    """
+                    document.querySelectorAll('.app-view').forEach(v => {
+                        v.classList.remove('active');
+                        v.style.display = 'none';
+                    });
+                    const target = document.getElementById(arguments[0]);
+                    if (target) {
+                        target.classList.add('active');
+                        target.style.display = 'block';
+                    }
+                    if (arguments[0] === 'view-equity-statement' && typeof window.renderEquityStatement === 'function') {
+                        window.renderEquityStatement();
+                    }
+                    """,
+                    target_id,
+                )
             view_el = d.find_element(By.ID, target_id)
             return view_el.is_displayed()
 
@@ -475,6 +496,12 @@ class BasePage:
                 } else if (kind === 'lang') {
                     if (window.LumenI18n) window.LumenI18n.setLang(identifier || 'en');
                     else localStorage.setItem('lumen_lang', identifier || 'en');
+                } else if (kind === 'expense') {
+                    removeFromKey('bookkeeping_history_v2', h =>
+                        h.expenseId === identifier || h.entityName === identifier
+                    );
+                } else if (kind === 'fx_backup') {
+                    localStorage.removeItem('bookkeeping_history_fx_backup');
                 }
             }
             """,

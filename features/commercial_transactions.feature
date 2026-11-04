@@ -79,3 +79,12 @@ Feature: Commercial Transactions, AI Document Extraction, Quotes, Purchase Order
     When the user navigates to the "Recurring Transactions" view
     And the user adds a "monthly" recurring "Bill" template named "Monthly Data Center Colocation" for "Etisalat Digital" of "4500.00" AED starting "2026-12-01"
     Then the Recurring Transactions table should list "Monthly Data Center Colocation"
+
+  @expenses
+  Scenario: Recording and editing a direct business expense in the Expenses module updates Expense History and General Ledger
+    When the user navigates to the "Expenses" view
+    And the user records a direct expense for payee "ENOC Retail LLC" of "400.00" AED on "6000 Office Supplies" paid from "1005 Bank" in "Dubai" with "standard" VAT
+    Then the Expense History table should list payee "ENOC Retail LLC" with VAT "20.00" and total "420.00"
+    When the user edits the last recorded expense amount to "500.00" AED with 5% VAT
+    Then the Expense History table should list payee "ENOC Retail LLC" with VAT "25.00" and total "525.00"
+

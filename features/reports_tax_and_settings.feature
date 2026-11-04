@@ -20,6 +20,8 @@ Feature: Financial Statements, UAE VAT 201, Corporate Tax, Budgeting, Forecast, 
     Then the Balance Sheet should display "Total Assets" and "Total Liabilities & Equity"
     When the user navigates to the "Cash Flow" view
     Then the Cash Flow Statement should display "Operating Activities" and "Net Change in Cash"
+    When the user navigates to the "Statement of Equity" view
+    Then the Statement of Equity should display "Beginning Equity" and "Ending Equity"
 
   Scenario: UAE VAT 201 return and Corporate Tax summary reflect standard-rated supplies and non-deductible add-backs
     When the user navigates to the "Journal Entries" view
@@ -49,3 +51,23 @@ Feature: Financial Statements, UAE VAT 201, Corporate Tax, Budgeting, Forecast, 
     Then the Currency Exchange Rates table should list "EUR" with rate "4.025"
     When the user navigates to the "Audit Log" view
     Then the System Audit Trail should contain a "Create" entry for "Saved transaction"
+
+  @vat201
+  Scenario: UAE VAT 201 Emirate Boxes 1a and 1b and Box 3 Reverse Charge populate from Emirate sales and RCM expenses
+    When the user posts a standard-rated sales invoice in "Abu Dhabi" for "ADNOC Logistics PJSC" of "4000.00" AED
+    And the user posts a standard-rated sales invoice in "Dubai" for "Emaar Hospitality LLC" of "6000.00" AED
+    And the user navigates to the "Expenses" view
+    And the user records a direct expense for payee "AWS EMEA SARL" of "2000.00" AED on "6200 Software & SaaS" paid from "1005 Bank" in "Dubai" with "reverse_charge" VAT
+    And the user navigates to the "VAT" view
+    Then the VAT 201 return should show positive output VAT in Box 1a (Abu Dhabi) and Box 1b (Dubai) and positive Box 3 Reverse Charge
+
+  @fx
+  Scenario: Converting legacy foreign-currency supplier bills to AED and undoing the conversion in Settings
+    When a legacy unconverted supplier bill "SUP-FX" for "Global Cloud Corp" of "1000.00" in foreign currency exists
+    And the user navigates to the "Settings" view
+    And the user adds or updates the currency exchange rate for "USD" to "3.6725" AED
+    And the user converts the legacy supplier bill from "USD" to AED in Settings
+    Then the FX conversion status message should contain "converted to AED"
+    When the user undoes the last FX conversion in Settings
+    Then the FX conversion status message should contain "Last conversion undone"
+

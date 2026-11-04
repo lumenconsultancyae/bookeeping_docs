@@ -124,18 +124,51 @@ class AccountingPage(BasePage):
         credit_account: str,
         total_amount: str,
         life_months: str,
+        schedule_mode: str = "monthly",
     ) -> None:
         """Populate and submit `#addAccrualForm`."""
         self.fill_input("accrualDate", start_date)
         self.fill_input("accrualDesc", description)
         self.select_by_value_or_text("accrualDrAcc", debit_account)
         self.select_by_value_or_text("accrualCrAcc", credit_account)
+        self.select_by_value_or_text("accrualMode", schedule_mode)
         self.fill_input("accrualAmount", total_amount)
-        self.fill_input("accrualLife", life_months)
+        if schedule_mode == "monthly":
+            self.fill_input("accrualLife", life_months)
         self.driver.execute_script(
             "document.getElementById('addAccrualForm').requestSubmit();"
         )
         self.accept_alert_if_present(timeout=1.5)
+
+    def record_accrual_usage_drawdown(
+        self,
+        description: str,
+        usage_date: str,
+        usage_amount: str,
+        usage_note: str,
+    ) -> None:
+        """Open `#recordAccrualUsageModal` for `description`, populate drawdown fields, and save."""
+        self.driver.execute_script(
+            """
+            const accruals = JSON.parse(localStorage.getItem('bookkeeping_accruals') || '[]');
+            const found = accruals.find(a => a.description === arguments[0]);
+            if (found && typeof window.recordAccrualUsage === 'function') {
+                window.recordAccrualUsage(found.id);
+            }
+            """,
+            description,
+        )
+        self.wait_until(
+            lambda d: d.find_element(By.ID, "recordAccrualUsageModal").is_displayed()
+        )
+        self.fill_input("recordUsageDate", usage_date)
+        self.fill_input("recordUsageAmount", usage_amount)
+        self.fill_input("recordUsageNote", usage_note)
+        self.click_id("btnSaveAccrualUsage")
+        self.accept_alert_if_present(timeout=1.5)
+        self.wait_until(
+            lambda d: not d.find_element(By.ID, "recordAccrualUsageModal").is_displayed()
+        )
 
     def get_calculated_monthly_accrual(self) -> str:
         """Return the auto-calculated `#accrualMonthly` value."""

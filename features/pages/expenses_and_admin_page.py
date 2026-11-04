@@ -1,0 +1,199 @@
+"""Page Object for Direct Expenses (`#view-expense`), Deferred Revenue (`2150`), Legal Modals, Plan Gating, and Super-Admin (`/admin`)."""
+
+from __future__ import annotations
+
+from selenium.webdriver.common.by import By
+
+from features.pages.base_page import BasePage
+
+
+class ExpensesAndAdminPage(BasePage):
+    """UI adapter for Direct Spend (`#view-expense`), Welcome Legal Modals, Plan Gating, and `/admin` Console."""
+
+    # --- Direct Expenses (`#view-expense`) ---
+
+    def record_direct_expense(
+        self,
+        *,
+        expense_date: str,
+        payee: str,
+        description: str,
+        account: str,
+        paid_from: str,
+        emirate: str,
+        vat_treatment: str,
+        amount_excl_vat: str,
+        apply_vat: bool = True,
+    ) -> str:
+        """Populate the Direct Expense form (`#view-expense`) and click `#expSaveBtn`."""
+        exp_num = self.get_value_by_id("expNumber")
+        self.fill_input("expDate", expense_date)
+        self.fill_input("expPayee", payee)
+        self.fill_input("expDesc", description)
+        self.select_by_value_or_text("expAccount", account)
+        self.select_by_value_or_text("expPaidFrom", paid_from)
+        self.select_by_value_or_text("expEmirate", emirate)
+        self.select_by_value_or_text("expVatTreatment", vat_treatment)
+        self.fill_input("expAmount", amount_excl_vat)
+
+        self.driver.execute_script(
+            """
+            const cb = document.getElementById('expApplyVat');
+            if (cb) {
+                cb.checked = Boolean(arguments[0]);
+                cb.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+            """,
+            apply_vat,
+        )
+        self.click_id("expSaveBtn")
+        return exp_num
+
+    def get_expense_history_summary(self) -> dict[str, str]:
+        """Return the Expense History table text, total amount, and count badge."""
+        return {
+            "body": self.get_text_by_id("expListBody"),
+            "total": self.get_text_by_id("expListTotal"),
+            "count": self.get_text_by_id("expCount"),
+        }
+
+    def edit_direct_expense_amount(self, expense_id: str, new_amount: str, apply_vat: bool = True) -> None:
+        """Invoke `window.editExpenseById(expense_id)`, update `#expAmount`, and save."""
+        self.driver.execute_script(
+            "if (typeof window.editExpenseById === 'function') window.editExpenseById(arguments[0]);",
+            expense_id,
+        )
+        self.fill_input("expAmount", new_amount)
+        self.driver.execute_script(
+            """
+            const cb = document.getElementById('expApplyVat');
+            if (cb) {
+                cb.checked = Boolean(arguments[0]);
+                cb.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+            """,
+            apply_vat,
+        )
+        self.click_id("expSaveBtn")
+
+    # --- Deferred Revenue (`2150`) Customer Invoice ---
+
+    def enable_customer_invoice_deferred_revenue(self, life_months: str = "6") -> None:
+        """Enable `#custIsPrepaid` on the Customer Sales Invoice form and set `#custPrepaidMonths`."""
+        self.driver.execute_script(
+            """
+            const cb = document.getElementById('custIsPrepaid');
+            if (cb) {
+                cb.checked = true;
+                cb.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+            const months = document.getElementById('custPrepaidMonths');
+            if (months) {
+                months.value = arguments[0];
+                months.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+            """,
+            str(life_months),
+        )
+
+    def set_customer_invoice_emirate(self, emirate: str) -> None:
+        """Select `#custEmirate` on the Customer Sales Invoice form."""
+        self.select_by_value_or_text("custEmirate", emirate)
+
+    # --- Welcome Legal Modals (`/welcome`) ---
+
+    def open_welcome_legal_modal(self, legal_key: str) -> dict[str, str]:
+        """Click `[data-legal="<legal_key>"]` on `/welcome` and return modal title and body text."""
+        def _open(d) -> bool:
+            link = d.find_element(By.CSS_SELECTOR, f'[data-legal="{legal_key}"]')
+            d.execute_script("arguments[0].click();", link)
+            modal = d.find_element(By.ID, "legalModal")
+            return modal.is_displayed()
+
+        self.wait_until(_open)
+        title = self.get_text_by_id("legalModalTitle")
+        body = self.get_text_by_id("legalModalBody")
+        self.click_id("btnLegalClose")
+        return {"title": title, "body": body}
+
+    # --- Plan Gating & Customer Upgrade Request ---
+
+    def is_sidebar_view_locked(self, target_view_id: str) -> bool:
+        """Return True if `.nav-item[data-target="<target_view_id>"]` has `.is-locked` and `.lock-badge`."""
+        return bool(
+            self.driver.execute_script(
+                """
+                const item = document.querySelector('.nav-item[data-target="' + arguments[0] + '"]');
+                return Boolean(item && item.classList.contains('is-locked') && item.querySelector('.lock-badge'));
+                """,
+                target_view_id,
+            )
+        )
+
+    def request_customer_plan_upgrade_in_settings(self) -> str:
+        """Click `#btnRequestPlanUpgrade` in `#view-settings`, confirm the modal, and return `#planSettingsCard` text."""
+        self.click_id("btnRequestPlanUpgrade")
+        self.wait_until(
+            lambda d: len(d.find_elements(By.CSS_SELECTOR, '.profile-modal-overlay [data-action="ok"]')) > 0
+        )
+        self.driver.execute_script(
+            """
+            const okBtn = document.querySelector('.profile-modal-overlay [data-action="ok"]');
+            if (okBtn) okBtn.click();
+            """
+        )
+        self.wait_until(
+            lambda d: "Upgrade requested:" in d.find_element(By.ID, "planSettingsCard").text
+        )
+        return self.get_text_by_id("planSettingsCard")
+
+    # --- Super-Admin Console (`/admin`) ---
+
+    def open_and_sign_in_to_admin_console(self, email: str, password: str) -> None:
+        """Navigate to `/admin`, sign in if prompted, and wait for `#adminConsoleSection`."""
+        self.driver.get(f"{self.base_url}/admin")
+        self.wait_until(
+            lambda d: d.execute_script("return document.readyState === 'complete'")
+        )
+        login_visible = self.driver.execute_script(
+            """
+            const sec = document.getElementById('adminLoginSection');
+            return Boolean(sec && !sec.hidden);
+            """
+        )
+        if login_visible:
+            self.fill_input("adminLoginEmail", email)
+            self.fill_input("adminLoginPassword", password)
+            self.click_id("btnAdminLoginSubmit")
+        self.wait_until(
+            lambda d: d.execute_script(
+                """
+                const sec = document.getElementById('adminConsoleSection');
+                return Boolean(sec && !sec.hidden);
+                """
+            )
+        )
+        self.collect_severe_console_logs()
+
+    def get_admin_console_summary(self) -> dict[str, str]:
+        """Return MRR KPI and tenant table text from `/admin`."""
+        return {
+            "mrr": self.get_text_by_id("adminKpiMrr"),
+            "accounts": self.get_text_by_id("adminKpiAccounts"),
+            "table": self.get_text_by_id("adminAccountsBody"),
+        }
+
+    def approve_upgrade_request_in_admin(self, company_name: str) -> str:
+        """Click the `[data-approve-req]` button for `company_name` in `/admin` and return updated row text."""
+        self.driver.execute_script(
+            """
+            const rows = Array.from(document.querySelectorAll('#adminAccountsBody tr'));
+            const row = rows.find(r => r.innerText.includes(arguments[0]));
+            if (row) {
+                const btn = row.querySelector('[data-approve-req]');
+                if (btn) btn.click();
+            }
+            """,
+            company_name,
+        )
+        return self.get_text_by_id("adminAccountsBody")

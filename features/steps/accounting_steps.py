@@ -195,3 +195,69 @@ def step_verify_locked_entry_remains(context) -> None:
     assert context.last_journal_desc in ledger_text, (
         f"Expected locked entry '{context.last_journal_desc}' to remain in General Ledger"
     )
+
+
+@when(
+    'the user creates a usage-based accrual schedule for "{desc}" of "{amount}" AED debiting "{debit_account}" and crediting "{credit_account}" starting "{start_date}"'
+)
+def step_create_usage_accrual(
+    context,
+    desc: str,
+    amount: str,
+    debit_account: str,
+    credit_account: str,
+    start_date: str,
+) -> None:
+    unique_desc = f"{desc} {context.scenario_uid}"
+    context.last_accrual_desc = unique_desc
+    context.created_resources.append(("accrual", unique_desc))
+    context.created_resources.append(("ledger", unique_desc))
+
+    context.accounting_page.add_accrual_schedule(
+        start_date=start_date,
+        description=unique_desc,
+        debit_account=debit_account,
+        credit_account=credit_account,
+        total_amount=amount,
+        life_months="12",
+        schedule_mode="usage",
+    )
+
+
+@when(
+    'the user records a usage drawdown of "{usage_amount}" AED on "{desc}" dated "{usage_date}" with note "{usage_note}"'
+)
+def step_record_accrual_usage_drawdown(
+    context,
+    usage_amount: str,
+    desc: str,
+    usage_date: str,
+    usage_note: str,
+) -> None:
+    unique_desc = getattr(context, "last_accrual_desc", desc)
+    context.accounting_page.record_accrual_usage_drawdown(
+        description=unique_desc,
+        usage_date=usage_date,
+        usage_amount=usage_amount,
+        usage_note=usage_note,
+    )
+
+
+@then(
+    'the Accruals directory should show "{desc}" with accumulated recognition "{expected_accumulated}" and net balance "{expected_net}"'
+)
+def step_verify_usage_accrual_balances(
+    context,
+    desc: str,
+    expected_accumulated: str,
+    expected_net: str,
+) -> None:
+    unique_desc = getattr(context, "last_accrual_desc", desc)
+    table_text = context.accounting_page.get_accruals_table_text()
+    assert unique_desc in table_text, (
+        f"Expected usage accrual '{unique_desc}' in Accruals table, got:\n{table_text}"
+    )
+    assert expected_accumulated in table_text and expected_net in table_text, (
+        f"Expected accumulated '{expected_accumulated}' and net balance '{expected_net}' in Accruals table, got:\n{table_text}"
+    )
+
