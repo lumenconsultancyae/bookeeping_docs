@@ -70,7 +70,50 @@ def step_process_and_save_payroll(
         pay_period_yyyy_mm=period,
         payment_account=payment_account,
         accrue_eosb=True,
+        wps_employer_id="1002233445566",
+        wps_routing_code="302620122",
+        wps_employer_ref=f"WPS-{period}",
     )
+
+
+@then('the WPS SIF preview should contain an "{edr_tag}" record and a MOHRE "{scr_tag}" control record for "{salary_month}"')
+def step_verify_wps_sif_preview(context, edr_tag: str, scr_tag: str, salary_month: str) -> None:
+    sif_text = getattr(context.payroll_page, "last_wps_sif_preview", "")
+    assert f"{edr_tag}," in sif_text, f"Expected '{edr_tag},' in WPS SIF preview, got:\n{sif_text}"
+    assert f"{scr_tag},1002233445566,302620122," in sif_text and f",{salary_month}," in sif_text, (
+        f"Expected MOHRE '{scr_tag}' header with salary month '{salary_month}', got:\n{sif_text}"
+    )
+
+
+@when(
+    'the user simulates statutory gratuity for basic salary "{basic}" AED, total salary "{total}" AED, hired "{hire_date}", ending "{end_date}" with "{unpaid_days}" unpaid leave days'
+)
+def step_simulate_statutory_gratuity(
+    context,
+    basic: str,
+    total: str,
+    hire_date: str,
+    end_date: str,
+    unpaid_days: str,
+) -> None:
+    context.last_eosb_calc_summary = context.payroll_page.simulate_eosb_calculator(
+        basic_salary=basic,
+        total_salary=total,
+        hire_date=hire_date,
+        end_date=end_date,
+        unpaid_days=unpaid_days,
+    )
+
+
+@then('the statutory gratuity calculator should show "{expected_bracket}" and statutory entitlement "{expected_amount}"')
+def step_verify_statutory_gratuity_calculator(
+    context,
+    expected_bracket: str,
+    expected_amount: str,
+) -> None:
+    summary = getattr(context, "last_eosb_calc_summary", "")
+    assert expected_bracket in summary, f"Expected bracket '{expected_bracket}' in calculator summary, got:\n{summary}"
+    assert expected_amount in summary, f"Expected entitlement '{expected_amount}' in calculator summary, got:\n{summary}"
 
 
 @then('the saved timesheets section for "{period}" should list "{emp_name}"')

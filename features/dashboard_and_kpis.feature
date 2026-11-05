@@ -88,3 +88,24 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     When the administrator approves the pending upgrade request for the registered company
     Then the Super-Admin Console should show no pending upgrade request for the registered company
 
+  @smoke @corp_tax_tracker
+  Scenario: Live 9% UAE Corporate Tax and Small Business Relief tracker updates on the Home Dashboard
+    When the user posts a balanced journal entry of "200000.00" AED from "1100 Bank Account" to "4100 Service Revenue" dated "2026-08-01"
+    And the user navigates to the "Dashboard" view
+    And the user selects the dashboard period year "2026" and month "7"
+    Then the dashboard UAE Corporate Tax tracker should show regime status "0% Bracket" and estimated tax "0.00"
+    When the user posts a balanced journal entry of "300000.00" AED from "1100 Bank Account" to "4100 Service Revenue" dated "2026-08-15"
+    And the user navigates to the "Dashboard" view
+    And the user selects the dashboard period year "2026" and month "7"
+    Then the dashboard UAE Corporate Tax tracker should show regime status "9% Standard Bracket" and estimated tax "11,250.00"
+    And the dashboard UAE Corporate Tax tracker Small Business Relief status should contain "Eligible"
+
+  @smoke @compliance_reminders
+  Scenario: UAE Compliance Reminder widget on the Home Dashboard alerts on Trade License, Establishment Card, and Employee Visa/Emirates ID expiries
+    When the user navigates to the "Settings" view
+    And the user configures UAE compliance renewal dates with Trade License "DED-88441" expiring in "15" days and Establishment Card "EST-99110" expiring in "90" days
+    And the user navigates to the "Employee details" view
+    And the user adds an employee "Layla Al Hashimi" with position "Operations Manager", basic salary "12000", Visa expiring in "-5" days, and Emirates ID expiring in "25" days
+    And the user navigates to the "Dashboard" view
+    Then the dashboard UAE Compliance Reminder widget should show Trade License status containing "Due in 15d" and Establishment Card status containing "Valid"
+    And the dashboard UAE Compliance Reminder widget should list employee "Layla Al Hashimi" with "Expired" and "Due in 25d" alerts

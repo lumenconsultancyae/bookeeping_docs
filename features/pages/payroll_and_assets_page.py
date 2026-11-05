@@ -26,7 +26,7 @@ class PayrollAndAssetsPage(BasePage):
         other_allowance: str = "0",
     ) -> None:
         """Open `#addEmployeeModal`, populate employee details, and submit `#addEmployeeForm`."""
-        self.driver.execute_script("window.openAddEmployeeModal();")
+        self.click_id("btnOpenAddEmployee")
         self.wait_until(lambda d: d.find_element(By.ID, "addEmployeeModal").is_displayed())
         self.fill_input("dirEmpName", name)
         self.fill_input("dirEmpPosition", position)
@@ -54,9 +54,6 @@ class PayrollAndAssetsPage(BasePage):
 
     def get_eosb_summary_text(self) -> str:
         """Return the text of `#eosbSummaryContainer`."""
-        self.driver.execute_script(
-            "if (typeof window.renderEOSBSummary === 'function') window.renderEOSBSummary();"
-        )
         return self.get_text_by_id("eosbSummaryContainer")
 
     def process_and_save_payroll(
@@ -64,27 +61,46 @@ class PayrollAndAssetsPage(BasePage):
         pay_period_yyyy_mm: str,
         payment_account: str = "1100 Bank Account",
         accrue_eosb: bool = True,
+        wps_employer_id: str | None = None,
+        wps_routing_code: str | None = None,
+        wps_employer_ref: str | None = None,
     ) -> str | None:
-        """Open the Timesheet modal, configure pay period and account, and click Save Payroll."""
-        self.driver.execute_script("window.openTimesheetModal();")
+        """Open the Timesheet modal, configure pay period, account, and WPS SCR fields, preview .SIF, and save."""
+        self.click_id("btnOpenTimesheetModal")
         self.wait_until(lambda d: d.find_element(By.ID, "timesheetModal").is_displayed())
         self.fill_input("timesheetPeriod", pay_period_yyyy_mm)
         self.select_by_value_or_text("payrollPaymentAccount", payment_account)
-        self.driver.execute_script(
-            """
-            const cb = document.getElementById('payrollAccrueEOSB');
-            if (cb) cb.checked = Boolean(arguments[0]);
-            if (typeof window.loadTimesheet === 'function') window.loadTimesheet();
-            """,
-            accrue_eosb,
-        )
-        self.driver.execute_script("window.savePayroll();")
+        cb = self.driver.find_element(By.ID, "payrollAccrueEOSB")
+        if cb.is_selected() != bool(accrue_eosb):
+            self.click_id("payrollAccrueEOSB")
+        if wps_employer_id is not None:
+            self.fill_input("wpsEmployerId", wps_employer_id)
+        if wps_routing_code is not None:
+            self.fill_input("wpsEmployerRoutingCode", wps_routing_code)
+        if wps_employer_ref is not None:
+            self.fill_input("wpsEmployerRef", wps_employer_ref)
+        self.click_id("btnPreviewWpsSif")
+        self.last_wps_sif_preview = self.get_text_by_id("wpsSifPreviewBox")
+        self.click_id("btnSavePayroll")
         alert_text = self.accept_alert_if_present(timeout=3.0)
         self.fill_input("filterTimesheetMonth", pay_period_yyyy_mm)
-        self.driver.execute_script(
-            "if (typeof window.loadSavedTimesheets === 'function') window.loadSavedTimesheets();"
-        )
         return alert_text
+
+    def simulate_eosb_calculator(
+        self,
+        basic_salary: str,
+        total_salary: str,
+        hire_date: str,
+        end_date: str,
+        unpaid_days: str = "0",
+    ) -> str:
+        """Populate the Interactive Statutory Gratuity Calculator inputs and return its summary text."""
+        self.fill_input("eosbCalcBasicSalary", basic_salary)
+        self.fill_input("eosbCalcTotalSalary", total_salary)
+        self.fill_input("eosbCalcHireDate", hire_date)
+        self.fill_input("eosbCalcEndDate", end_date)
+        self.fill_input("eosbCalcUnpaidDays", unpaid_days)
+        return self.get_text_by_id("eosbCalcResultSummary")
 
     def get_saved_timesheets_text(self) -> str:
         """Return the text of `#savedTimesheetsContainer`."""
