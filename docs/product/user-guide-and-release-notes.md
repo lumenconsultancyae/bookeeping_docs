@@ -20,6 +20,11 @@ When you open Lumen Accounting Suite, the **Dashboard** provides an immediate ov
   - A 6-month **Cash In vs. Cash Out** bar chart highlights monthly liquidity trends.
   - **Critical Receivables (Owe You)** and **Critical Payables (You Owe)** list overdue invoices exceeding 30 days so collections and vendor payments can be prioritized.
 - **Detailed Accounting KPIs**: Clickable cards for **Total A/R**, **Total A/P**, **Total Revenue**, **Total Expenses** (with an interactive **Breakdown** modal), **VAT Summary**, **Corp. Tax Liab.**, and **Net Profit / (Loss)** jump directly to the filtered General Ledger view.
+- **Live 9% UAE Corporate Tax & Small Business Relief Tracker**:
+  - Tracks your real-time **Adjusted Taxable Income** against the UAE **AED 375,000 (0% Bracket)** threshold and estimates **9% Corporate Tax** on income above the threshold.
+  - Monitors gross revenue against the **AED 3,000,000 Small Business Relief (Article 21)** cap, displaying remaining revenue headroom, effective tax rate, non-deductible add-backs, and Qualifying Free Zone (0% QFZP) status.
+- **UAE Compliance & Renewal Reminders**:
+  - Tracks company **Trade License** and **Establishment Card** expiry dates (configured in **Settings**) alongside employee **Residence Visa** and **Emirates ID** expiry dates, flagging items as **Expired**, **Due within 30 days (Urgent)**, **Due within 60 days (Warning)**, or **Valid**.
 
 ---
 
@@ -54,12 +59,15 @@ Navigate to **TRANSACTIONS > Sales Invoices** to bill customers and manage credi
 - **AI Auto-Fill (Optional)**: Upload an existing PDF or image invoice to automatically populate customer details, line items, and tax treatment.
 - **Manual Generation**: Select or enter a customer name, Emirate place of supply, payment terms, revenue account (`Service Revenue`, `Product Sales`, `Consulting Income`, `Other Revenue`, or `Deferred Revenue`), line items, and tax treatment (**Standard 5%**, **Zero-Rated 0%**, or **Exempt**).
 - **Inventory & COGS Automation**: Selling an inventory item under `Product Sales` automatically deducts stock in the **Stock Ledger** and posts a corresponding **Cost of Goods Sold (COGS)** entry.
-- **UAE PINT-AE XML E-Invoicing**: Click **Preview E-Invoice** to print a formatted UAE Tax Invoice or export a validated **UAE Peppol PINT-AE UBL 2.1 XML** document (Invoice `380` or Tax Credit Note `381` with 15-digit TRN validation).
+- **UAE PINT-AE XML E-Invoicing, Executive A4 Print Layout & 1-Tap WhatsApp Sharing**:
+  - Select **English Only (EN)** or **Arabic Only (AR)** for your invoice document and WhatsApp message, and optionally attach a **Payment Link** (such as Ziina, Stripe, or PayTabs).
+  - Click **Preview E-Invoice** to inspect or print an isolated A4 executive **Tax Invoice** featuring a top-left logo, top-right company details, centered **TAX INVOICE** / **فاتورة ضريبية** banner, left **Billed To** card, right 4-field metadata card (**Invoice No.**, **Invoice Date**, **Terms**, **Due Date**), fixed-width item table, **Dirhams Only.** amount in words, and a computer-generated document footer note, or export a validated **UAE Peppol PINT-AE UBL 2.1 XML** document (Invoice `380` or Tax Credit Note `381`).
+  - Click **Share via WhatsApp** to normalize UAE mobile numbers (`050...` to `97150...`) and launch a 1-tap WhatsApp message containing the formatted invoice summary and payment link.
 - **Tax Credit Notes (FTA Article 60)**: Issue a linked **Tax Credit Note (`CRN-####`)** against any posted sales invoice to record returns, discounts, or billing adjustments, automatically reversing Output VAT, revenue, and open customer receivables.
 
 ### Supplier Bills & Direct Expenses
 - **Supplier Bills (`TRANSACTIONS > Supplier Bills`)**: Drag and drop a PDF, PNG, or JPG vendor invoice and click **Analyze Document**. Review extracted line items, foreign currency conversion to AED, and suggested accounts, optionally flag items as **Corporate Tax Add-Back**, and click **Confirm & Save to Ledger**.
-- **Direct Expenses (`TRANSACTIONS > Expenses`)**: Record immediate out-of-pocket or card/bank expenses (or scan receipts with AI) paid directly from **Cash**, **Bank**, **Petty Cash**, or **Accounts Payable**, with built-in VAT calculation and Corporate Tax Add-Back flagging.
+- **Direct Expenses & Camera Receipt TRN OCR (`TRANSACTIONS > Expenses`)**: Record immediate out-of-pocket or card/bank expenses paid directly from **Cash**, **Bank**, **Petty Cash**, or **Accounts Payable**, or click **Snap Camera Receipt** to extract and validate the vendor's **15-digit UAE Tax Registration Number (TRN)**, Emirate place of supply, net amount, and **5% VAT** automatically.
 
 ### Banking, Reconciliation & Cheque Registry
 - **Banking (`TRANSACTIONS > Banking`)**:
@@ -79,11 +87,12 @@ Navigate to **TRANSACTIONS > Sales Invoices** to bill customers and manage credi
 - **General Ledger (`ACCOUNTING > General Ledger`)**: Filter all transactions by date range, type, entity, account, or status; match payments to open invoices; and lock completed accounting periods using **Close Month For Editing** (`Lock Ledger`).
 - **Statement of Account (`ACCOUNTING > SOA`)**: View running balances and KPI summaries (**Total Invoice Value**, **Total Payments**, and **Balance**) for any individual customer/supplier, or across **All Accounts Payable** and **All Accounts Receivable**.
 
-### Payroll, Timesheets & UAE WPS
+### Payroll, Timesheets, MOHRE UAE WPS & Statutory Gratuity (EOSB)
 Navigate to **PAYROLL > Employee details** and **PAYROLL > Timesheet & WPS**:
-- Maintain employee records including Employee ID, Labour Card Number, IBAN, Bank Routing Code, Basic Salary, Housing, Telephone, and Other Allowances.
+- Maintain employee records including Employee ID, 14-digit MOHRE Labour Card Number, IBAN, 9-digit Bank Routing Code, Residence Visa Expiry, Emirates ID Expiry, Basic Salary, Housing, Telephone, and Other Allowances.
 - Open the monthly **Timesheet (UAE WPS)** modal to record days worked, bonuses, loan deductions, and other deductions, and optionally accrue **End of Service Benefits (EOSB)** and leave salary.
-- Click **Save Payroll** to post all payroll journal entries automatically, generate printable employee **Payslips**, and click **Download WPS (.sif)** to export a UAE Wage Protection System Salary Information File.
+- Use the **UAE Article 51 Statutory Gratuity Calculator** to simulate or accrue End-of-Service Gratuity under UAE Federal Decree-Law No. 33 of 2021 (**21 days/year** basic salary for the first 5 years, **30 days/year** for service beyond 5 years, automatic exclusion of unpaid leave days, and the **2-year total wage cap**).
+- Click **Save Payroll** to post all payroll journal entries automatically, generate printable employee **Payslips**, preview the MOHRE **EDR** and **SCR** control records, and click **Download WPS (.sif)** to export a compliant UAE Wage Protection System Salary Information File.
 
 ### Tax Compliance, FP&A & Financial Statements
 - **UAE VAT 201, FTA Audit File (FAF) & Corporate Tax (`TAX > VAT` & `Corporate Tax`)**:
@@ -103,6 +112,9 @@ Navigate to **PAYROLL > Employee details** and **PAYROLL > Timesheet & WPS**:
 
 ### Latest Release Highlights
 
+- **Live UAE 9% Corporate Tax & Small Business Relief Tracker**: Added a real-time Home Dashboard tracker monitoring Adjusted Taxable Income against the AED 375,000 (0% bracket) threshold, 9% Corporate Tax liability, Article 21 AED 3,000,000 Small Business Relief eligibility and headroom, and Qualifying Free Zone Person (0% QFZP) status.
+- **UAE Compliance Expiry Reminders & MOHRE WPS / Article 51 Gratuity Engine**: Added automated 30-day urgent and 60-day warning alerts for Trade License, Establishment Card, Employee Residence Visa, and Emirates ID expiries, alongside a MOHRE/CBUAE 10-field `EDR` + `SCR` WPS `.SIF` generator and a tenure-aware UAE Article 51 End-of-Service Gratuity calculator (21/30-day brackets, unpaid leave exclusion, and 2-year total wage cap).
+- **WhatsApp-First Invoicing, Camera Receipt TRN OCR & Executive A4 Print Layout**: Added 1-tap single-language (`EN` or `AR`) WhatsApp invoice and payment link sharing with `+971` mobile normalization, camera receipt 15-digit UAE Vendor TRN and 5% VAT OCR extraction in Direct Expenses, and an isolated A4 executive Tax Invoice print layout with `Dirhams Only.` amount in words.
 - **Subscription Plans, Multi-Company Isolation & Bilingual (`EN` / `عربي`) Workspace**: Added self-service onboarding with salted **PBKDF2-SHA256 (120,000 iterations)** credential hashing, Basic/Advance/Premium subscription tiers (**Corporate Tax Only (0% VAT)** pricing), isolated multi-company profile storage, an Owner Admin Console for account management and upgrade approvals, and full English/Arabic RTL interface switching.
 - **Direct Expenses & FTA Article 60 Tax Credit Notes**: Added a dedicated **Direct Expenses** workspace with AI receipt scanning and immediate Cash/Bank/Petty Cash settlement, plus sequential **Tax Credit Notes (`CRN-####`)** linked to original customer invoices.
 - **UAE PINT-AE UBL 2.1 XML E-Invoicing & FTA Audit File (FAF)**: Upgraded E-Invoice generation to the UAE Peppol **PINT-AE** specification (Invoice `380` and Credit Note `381` with 15-digit TRN validation), expanded **VAT 201** to Emirate-level Boxes `1a`–`1g`, and added **FTA Audit File (`.csv`)** generation.

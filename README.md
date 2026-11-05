@@ -24,8 +24,11 @@ bookeeping_docs/
 ├── tests/                                           # Unit, HTTP integration & behavioral JS test suite
 │   ├── test_agy_service.py                          # Unit & HTTP integration tests for agy_service.py
 │   ├── test_auth_and_welcome.py                     # Auth, multi-tenant isolation, plan gating & edge proxy tests
-│   ├── test_faf_export.py                           # FTA VAT 201, FAF CSV, Credit Notes, PINT-AE XML & XSS tests
-│   └── test_provisioning.py                         # Unit & CLI tests for AWS/Cloudflare provisioning
+│   ├── test_faf_export.py                           # FTA VAT 201, FAF CSV, Credit Notes, PINT-AE XML, CT Tracker & XSS tests
+│   ├── test_provisioning.py                         # Unit & CLI tests for AWS/Cloudflare provisioning
+│   ├── test_provisioning_clients.py                 # Extended SigV4, Cloudflare/EC2 idempotency & repo hygiene tests
+│   ├── test_uae_compliance.py                       # UAE Compliance Expiry Reminders, WPS .SIF (EDR/SCR) & Art. 51 Gratuity tests
+│   └── test_whatsapp_workflows.py                   # WhatsApp EN/AR invoice share, +971 phone, TRN OCR & executive print tests
 ├── behave.ini                                       # Behave BDD runner configuration
 ├── requirements.txt                                 # Python BDD & WebDriver dependencies
 ├── docs/
@@ -181,7 +184,7 @@ python3 -B -m unittest discover -s tests -v
 
 ### 2. Execute the Behave BDD E2E Suite
 ```bash
-# Run all 32 scenarios across all 6 features
+# Run all 35 scenarios across all 6 features
 behave
 
 # Run only @smoke tagged scenarios

@@ -25,7 +25,7 @@ Feature: Commercial Transactions, AI Document Extraction, Quotes, Purchase Order
     And the user fills an Art. 59 customer invoice for "Al Masa Advisory LLC" issued "2026-10-10" supplied "2026-10-05" with item "VAT Compliance Audit" quantity "2" at rate "1000.00" AED discount "200.00" AED and "standard" VAT
     Then the customer invoice summary should show discount "200.00", subtotal "1,800.00", VAT "90.00", and total "1,890.00"
     When the user previews the customer E-Invoice
-    Then the E-Invoice preview modal should display Date of Supply "2026-10-05", Discount, VAT Rate, and VAT Amount
+    Then the E-Invoice preview modal should display Invoice Date "2026-10-10", Terms, Due Date, Discount, VAT Rate, and VAT Amount
     When the user submits the customer invoice to the ledger
     And the user issues a Tax Credit Note against the last invoice with reason "Agreed Price / Discount Adjustment", item "Partial Scope Credit", quantity "1", rate "500.00" AED, discount "50.00" AED, and "5" percent VAT
     Then the Tax Credit Note summary should show discount "50.00", subtotal "450.00", VAT "22.50", and total "472.50"
@@ -88,3 +88,14 @@ Feature: Commercial Transactions, AI Document Extraction, Quotes, Purchase Order
     When the user edits the last recorded expense amount to "500.00" AED with 5% VAT
     Then the Expense History table should list payee "ENOC Retail LLC" with VAT "25.00" and total "525.00"
 
+  @whatsapp_workflows
+  Scenario: Sharing a bilingual AR/EN Tax Invoice + Payment Link via WhatsApp and snapping a camera receipt for Vendor TRN OCR
+    When the user navigates to the "Sales Invoices" view
+    And the user fills a WhatsApp-ready customer invoice for "Al Noor Logistics LLC" with phone "050 123 4567" and payment link "https://pay.ziina.com/lumen/INV-WA" for "Express Freight" quantity "1" at rate "2000.00" AED
+    And the user previews the customer E-Invoice
+    Then the bilingual E-Invoice preview should display "فاتورة ضريبية", payment link "https://pay.ziina.com/lumen/INV-WA", and a 1-tap WhatsApp share URL for "971501234567"
+    When the user navigates to the "Expenses" view
+    And the user snaps a camera receipt photo in the Expenses module for OCR extraction
+    Then the Expense OCR form should auto-populate Vendor TRN "100234567890003", payee "ADNOC Distribution", net "200.00", and VAT "10.00"
+    When the user saves the OCR-extracted expense
+    Then the Expense History table should display Vendor TRN "100234567890003" and total "210.00"

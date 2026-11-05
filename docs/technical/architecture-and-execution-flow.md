@@ -2,7 +2,7 @@
 
 ## 1. High-Level Architecture
 
-Lumen Accounting Suite is a browser-hosted multi-module Single-Page Application (SPA) and multi-tenant commercial workspace built with vanilla HTML5, CSS3 (`style.css`, `components.css`, `theme-pro.css`, `welcome.css`, `admin.css`, `i18n.css`), and ES6+ JavaScript across 3 HTML entrypoints (`index.html`, `welcome.html`, `admin.html`), 6 synchronous view-template modules (`views-transactions.js`, `views-operations.js`, `views-sales-and-banking.js`, `views-accounting-and-tax.js`, `views-reports-and-settings.js`, `views-modals.js`), 16 modular application controller scripts (`app-core-and-router.js` through `app-quotes-pos-recurring.js` plus `script.js`), and 20 specialized domain modules (`profiles-storage.js`, `profiles-ui.js`, `auth.js`, `welcome-plans.js`, `welcome.js`, `admin.js`, `plan-access.js`, `plan-gating.js`, `i18n.js`, `attachments-store.js`, `ar-posting-fix.js`, `fx-correction.js`, `po-preview.js`, `po-receiving.js`, `quote-preview.js`, `einvoice-ae.js`, `credit-notes.js`, `vat201.js`, `faf-export.js`, `expenses.js`). Locally, it is served via an Nginx reverse proxy (`bookkeeping-web` on port `9091`) configured in `default.conf` with clean URL routes (`/welcome`, `/admin`), `/__vendor__/` offline asset shims (`pdf.min.js`), and `/api/` reverse-proxy forwarding (`client_max_body_size 50M`, `proxy_read_timeout 300s`) to the containerized `agy-ai` prediction service (`bookkeeping-agy-ai` on port `3000`, running `agy_service.py`). In production, the static suite and its edge proxy (`functions/api/[[path]].js`) are deployed on **Cloudflare Pages** (`https://lumen-bookkeeping.pages.dev` and `https://bookeeping.lumenconsultancy.net`), which enforces HTTP method allowlisting (`GET`/`POST`), validates the request `Origin` and `X-Lumen-Client: lumen-bookkeeping-web` header at the Cloudflare edge, fails closed (`503`) if `AGY_BACKEND_URL` is absent, injects the shared secret `X-Agy-Proxy-Secret`, and forwards `/api/v1/prediction/*` requests to the **AWS EC2** `agy-ai` stack (`i-09003c32e39617fea` in `us-east-1`, `docker-compose.prod.yml`). Transactional, master-data, and configuration state is persisted synchronously in tenant-scoped browser `localStorage` (`LumenProfiles`), while binary document attachments (`fileBase64`) are offloaded asynchronously to **IndexedDB** (`attachments-store.js` / `lumen_attachments_v1`). At read time, the ledger engine dynamically merges persisted transactions (`bookkeeping_history_v2`) with deterministically synthesized depreciation, amortization, and deferred-revenue recognition journal vouchers derived from active Fixed Assets and Accrual/Deferred Revenue schedules.
+Lumen Accounting Suite is a browser-hosted multi-module Single-Page Application (SPA) and multi-tenant commercial workspace built with vanilla HTML5, CSS3 (`style.css`, `components.css`, `theme-pro.css`, `welcome.css`, `admin.css`, `i18n.css`), and ES6+ JavaScript across 3 HTML entrypoints (`index.html`, `welcome.html`, `admin.html`), 6 synchronous view-template modules (`views-transactions.js`, `views-operations.js`, `views-sales-and-banking.js`, `views-accounting-and-tax.js`, `views-reports-and-settings.js`, `views-modals.js`), 16 modular application controller scripts (`app-core-and-router.js` through `app-quotes-pos-recurring.js` plus `script.js`), and 24 specialized domain modules (`profiles-storage.js`, `profiles-ui.js`, `auth.js`, `welcome-plans.js`, `welcome.js`, `admin.js`, `plan-access.js`, `plan-gating.js`, `i18n.js`, `attachments-store.js`, `ar-posting-fix.js`, `fx-correction.js`, `po-preview.js`, `po-receiving.js`, `quote-preview.js`, `einvoice-ae.js`, `credit-notes.js`, `vat201.js`, `faf-export.js`, `expenses.js`, `corp-tax-tracker.js`, `compliance-reminders.js`, `wps-gratuity.js`, `whatsapp-workflows.js`). Locally, it is served via an Nginx reverse proxy (`bookkeeping-web` on port `9091`) configured in `default.conf` with clean URL routes (`/welcome`, `/admin`), `/__vendor__/` offline asset shims (`pdf.min.js`), and `/api/` reverse-proxy forwarding (`client_max_body_size 50M`, `proxy_read_timeout 300s`) to the containerized `agy-ai` prediction service (`bookkeeping-agy-ai` on port `3000`, running `agy_service.py`). In production, the static suite and its edge proxy (`functions/api/[[path]].js`) are deployed on **Cloudflare Pages** (`https://lumen-bookkeeping.pages.dev` and `https://bookeeping.lumenconsultancy.net`), which enforces HTTP method allowlisting (`GET`/`POST`), validates the request `Origin` and `X-Lumen-Client: lumen-bookkeeping-web` header at the Cloudflare edge, fails closed (`503`) if `AGY_BACKEND_URL` is absent, injects the shared secret `X-Agy-Proxy-Secret`, and forwards `/api/v1/prediction/*` requests to the **AWS EC2** `agy-ai` stack (`i-09003c32e39617fea` in `us-east-1`, `docker-compose.prod.yml`). Transactional, master-data, and configuration state is persisted synchronously in tenant-scoped browser `localStorage` (`LumenProfiles`), while binary document attachments (`fileBase64`) are offloaded asynchronously to **IndexedDB** (`attachments-store.js` / `lumen_attachments_v1`). At read time, the ledger engine dynamically merges persisted transactions (`bookkeeping_history_v2`) with deterministically synthesized depreciation, amortization, and deferred-revenue recognition journal vouchers derived from active Fixed Assets and Accrual/Deferred Revenue schedules.
 
 ```mermaid
 flowchart LR
@@ -137,26 +137,36 @@ sequenceDiagram
 
 ---
 
-### Phase 4: Commercial, Credit Notes, Contacts & Inventory Subsystems
+### Phase 4: Commercial, Credit Notes, WhatsApp Workflows, Contacts & Inventory Subsystems
 
 1. **Customer & Supplier Directories**: Upsert contact records (`saveCustomer`, `saveSupplier`) and enforce referential integrity in `deleteCustomer(name)`.
-2. **Tax Credit Notes (`credit-notes.js` — UAE FTA VAT Art. 60)**: Issues sequential `CRN-####` credit notes linked to an original Tax Invoice, validates creditable balance, and reverses `4xxx` Revenue, `2500 Output VAT`, and `1200 Accounts Receivable` across GL, Trial Balance, KPIs, VAT 201, and FAF.
-3. **Inventory Directory & Stock Ledger**: Bidirectional Cost/Markup/Price math, `window.logStockMovement` (`bookkeeping_stock_ledger` + `bookkeeping_inventory`), automatic COGS & stock `OUT` on customer invoice save, and stock reversal on entry deletion.
-4. **Quotes, Purchase Orders & Recurring Templates (`quote-preview.js`, `po-preview.js`, `po-receiving.js`, `ar-posting-fix.js`)**: Quotes (`Draft` $\rightarrow$ `Invoiced`), POs (`Draft` $\rightarrow$ `Goods Received` $\rightarrow$ `Billed` with 3-way matching), and Recurring Templates (`bookkeeping_recurring_v2`).
+2. **Executive Tax Invoice Preview, A4 Print Isolation & Tax Credit Notes (`credit-notes.js` — UAE FTA VAT Art. 59 & Art. 60)**:
+   - `renderTaxDocumentPreview` renders single-language (`en` or `ar`) Tax Invoices and Tax Credit Notes with a `dir="ltr"` header block (`flex-wrap: nowrap`, top-left company logo, top-right company details constrained to `max-width: 58%`), centered `.ei-title-banner` (`TAX INVOICE` / `فاتورة ضريبية`), left `Billed To:` card, right 4-field executive metadata card (`Invoice No.`, `Invoice Date`, `Terms`, `Due Date`), `table-layout: fixed` item table, `Dirhams Only.` amount in words, and a computer-generated document footer note.
+   - `printTaxDocument` isolates `#invoiceModal` on A4 portrait (`body.printing-invoice-modal` with `@media print` and `print-color-adjust: exact`).
+   - Issues sequential `CRN-####` credit notes linked to an original Tax Invoice, validates creditable balance, and reverses `4xxx` Revenue, `2500 Output VAT`, and `1200 Accounts Receivable` across GL, Trial Balance, KPIs, VAT 201, and FAF.
+3. **WhatsApp-First Sharing & Camera Receipt 15-Digit TRN OCR (`whatsapp-workflows.js`, `expenses.js`)**:
+   - `UAEWhatsAppWorkflows` normalizes UAE phone numbers to E.164 `9715XXXXXXXX` (`normalizeUaePhone`), builds single-language (`en` or `ar`) WhatsApp invoice messages and `https://wa.me/<phone>?text=...` URLs (`buildInvoiceMessage`, `buildWhatsAppShareUrl`, `shareDocumentViaWhatsApp`) with embedded payment links (`paymentLink` / `companyPaymentLink`), validates 15-digit UAE TRNs starting with `100` (`isValidUaeTrn`), and extracts 15-digit Vendor TRNs, Emirate place of supply, and 5% VAT from camera receipt OCR payloads (`extractReceiptTrnAndVat`, `#expCameraInput`, `#expSnapCameraBtn`, `#expVendorTrn`).
+4. **Inventory Directory & Stock Ledger**: Bidirectional Cost/Markup/Price math, `window.logStockMovement` (`bookkeeping_stock_ledger` + `bookkeeping_inventory`), automatic COGS & stock `OUT` on customer invoice save, and stock reversal on entry deletion.
+5. **Quotes, Purchase Orders & Recurring Templates (`quote-preview.js`, `po-preview.js`, `po-receiving.js`, `ar-posting-fix.js`)**: Quotes (`Draft` $\rightarrow$ `Invoiced`), POs (`Draft` $\rightarrow$ `Goods Received` $\rightarrow$ `Billed` with 3-way matching), and Recurring Templates (`bookkeeping_recurring_v2`).
 
 ---
 
-### Phase 5: Payroll, Timesheets, UAE WPS & EOSB Engine
+### Phase 5: Payroll, Timesheets, UAE WPS & Art. 51 EOSB Engine
 
 1. **Net Pay Formula (`calcNetPay(empId)`)**: $\text{earnedPay} = \frac{\text{totalPay}}{30} \times \text{daysWorked}$, $\text{netPay} = \text{earnedPay} + \text{bonus} - \text{loanDed} - \text{otherDed}$.
 2. **Payroll Run & Multi-Journal Posting (`savePayroll()`)**: Persists `payroll_${period}` and posts up to 5 double-entry journal vouchers dated `${period}-28` (Gross Payroll `6500`/`2100`, Net Disbursement `2100`/bank, Loan Recovery `2100`/`1210`, Other Deductions `2100`/`6500`, and UAE Labour Law EOSB & Leave Accrual `6520`/`2120`).
-3. **UAE WPS SIF Export (`generateWPS()`)**: Emits `EDR` employee rows and a trailing `SCR` summary row (`WPS_${period}.sif`).
+3. **Tenure-Aware Statutory Gratuity & MOHRE/CBUAE WPS `.SIF` Engine (`wps-gratuity.js` / `UAEWpsAndGratuity`)**:
+   - **UAE Federal Decree-Law No. 33 of 2021 Article 51 Gratuity (`calculateEmployeeGratuity`)**: Excludes `unpaidLeaveDays` from continuous service tenure per Art. 51(4) ($\text{effectiveServiceDays} = \max(0, \text{calendarDays} - \text{unpaidLeaveDays})$, $\text{serviceYears} = \frac{\text{effectiveServiceDays}}{365}$). Applies `0` statutory termination entitlement for `< 1 year` (`under_1_year`, while computing a `21 days/yr` monthly accounting accrual), `21 calendar days' basic salary per year` for `1–5 years` (`years_1_to_5`), and `21 days/yr` for the first 5 years plus `30 days/yr` for service exceeding 5 years (`over_5_years`), capped at 2 years' total wage ($24 \times \text{totalPay}$) per Art. 51(2).
+   - **MOHRE / CBUAE WPS `.SIF` Export (`buildWpsSif` / `generateWPS()`)**: Emits 10-field `EDR` employee rows (`EDR,<14-digit zero-padded Labour Card>,<9-digit routing code>,<sanitized IBAN>,<payStartDate>,<payEndDate>,<daysWorked>,<fixedIncome>,<variableIncome>,<leaveDays>`) followed by a 10-field `SCR` control record (`SCR,<13-digit Employer ID>,<9-digit bank routing code>,<YYYY-MM-DD>,<HHMM>,<MMYYYY>,<edrCount>,<totalSalary>,AED,<employerRef>`).
 
 ---
 
-### Phase 6: Double-Entry Financial Reporting, KPIs, FP&A & UAE Tax Compliance
+### Phase 6: Double-Entry Financial Reporting, KPIs, FP&A & UAE Tax / Regulatory Compliance
 
-1. **Dashboard KPI Engine (`updateKPIs()`)**: Computes P&L-scoped vs. cumulative Balance-Sheet metrics, deducts `credit_note` entries from Net Revenue, computes Avg. Monthly Burn, Cash Runway, and Net Profit Margin, and populates `#criticalArList` / `#criticalApList`.
+1. **Dashboard KPI, Corporate Tax Tracker & UAE Compliance Reminder Engines (`updateKPIs()`, `corp-tax-tracker.js`, `compliance-reminders.js`)**:
+   - Computes P&L-scoped vs. cumulative Balance-Sheet metrics, deducts `credit_note` entries from Net Revenue, computes Avg. Monthly Burn, Cash Runway, and Net Profit Margin, and populates `#criticalArList` / `#criticalApList`.
+   - **Live UAE 9% Corporate Tax & Small Business Relief Tracker (`CorporateTaxTracker` / `UAECorpTaxTracker`)**: Computes `netProfit`, `ctAddBacks`, `taxableIncome`, AED `375,000` `0%` threshold usage (`thresholdPct`, `zeroBracketRemaining`), `9%` tax above threshold (`ctPayable`), Ministerial Decision No. 73 of 2023 (Art. 21) AED `3,000,000` Small Business Relief eligibility (`sbrEligibleByRevenue`, `sbrElectiveActive`, `sbrDisqualifiedExceededCap`), and `Qualifying Free Zone` (`0%` QFZP) regime status, rendering live progress bars and badges into `#corpTaxTrackerCard` on ledger, supplier bill, and trial balance updates.
+   - **UAE Compliance & Renewal Reminders (`UAEComplianceReminders`)**: Evaluates Trade License (`tradeLicenseNumber`, `tradeLicenseExpiry`), Establishment Card (`establishmentCardNumber`, `establishmentCardExpiry`), Employee Residence Visa (`visaExpiry`), and Emirates ID (`emiratesIdExpiry`) dates against `URGENT_THRESHOLD_DAYS = 30` and `WARNING_THRESHOLD_DAYS = 60`, rendering XSS-escaped status badges and alerts into `#uaeComplianceReminderCard`.
 2. **Trial Balance, Emirate-Level FTA VAT 201 (`vat201.js`), FTA Audit File (`faf-export.js`) & UAE Corporate Tax**:
    - **VAT 201 (`vat201.js`)**: Classifies standard-rated (`5%`) supplies across Emirate Boxes `1a`–`1g` (`Abu Dhabi`, `Dubai`, `Sharjah`, `Ajman`, `Umm Al Quwain`, `Ras Al Khaimah`, `Fujairah`), Reverse Charge Boxes `3` & `10`, Zero-Rated Box `4`, Exempt Box `5`, Output VAT Box `8`, Input VAT Boxes `9`–`11`, and Net VAT Payable/Refundable Boxes `12`–`14`.
    - **FTA Audit File (`faf-export.js`)**: Generates the 5-section UAE FTA Audit File (`CompInfo`, `MasterData`, `PurcData`, `SuppData`, `GLData`) with balanced double-entry ledger lines.
@@ -223,9 +233,17 @@ sequenceDiagram
     "companyAddress": "DIFC, Dubai, UAE",
     "companyTrn": "100234567890003",
     "companyBankAccount": "1005",
+    "companyPaymentLink": "https://pay.ziina.com/lumen/default",
     "flowiseEndpoint": "/api/v1/prediction/937be8b1-663e-45a5-a9d7-b5c912ac1abd",
     "companyType": "Mainland",
-    "smallBusinessRelief": false
+    "smallBusinessRelief": false,
+    "tradeLicenseNumber": "DED-88441",
+    "tradeLicenseExpiry": "2027-08-15",
+    "establishmentCardNumber": "EST-99110",
+    "establishmentCardExpiry": "2027-09-01",
+    "wpsEmployerId": "1002233445566",
+    "wpsBankRoutingCode": "302620122",
+    "wpsEmployerRef": "WPS-LUMEN-202610"
   }
 }
 ```
@@ -251,8 +269,8 @@ sequenceDiagram
 ### 3.3 UAE WPS `.sif` (`EDR` / `SCR`) & `agy-ai` Prediction Envelope (`agy_service.py`)
 
 ```text
-EDR,EMP-001,302620122,AE070331234567890123456,,,30,15000.00,0.00,0,0.00
-SCR,,,,,,1,20000.00
+EDR,78419901234567,302620122,AE070331234567890123456,2026-10-01,2026-10-31,30,20000.00,1500.00,0
+SCR,1002233445566,302620122,2026-10-28,1430,102026,1,21500.00,AED,WPS-LUMEN-202610
 ```
 
 ```json

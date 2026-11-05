@@ -152,6 +152,23 @@ def build_mock_ai_response(body_text: str) -> dict:
         ]
         return {"text": f"```json\n{json.dumps(payload, indent=2)}\n```"}
 
+    if "EXPENSE RECEIPT" in body_text:
+        payload = {
+            "date": "2026-10-22",
+            "reference": "RCP-ADNOC-7721",
+            "entityName": "ADNOC Distribution",
+            "vendorTrn": "100234567890003",
+            "emirate": "Abu Dhabi",
+            "description": "Fleet Fuel & Service",
+            "account": "6800 Travel & Entertainment",
+            "subtotal": 200.00,
+            "tax": 10.00,
+            "total": 210.00,
+            "currency": "AED",
+            "paymentMethod": "Card",
+        }
+        return {"text": f"```json\n{json.dumps(payload, indent=2)}\n```"}
+
     if "CUSTOMER INVOICE" in body_text:
         payload = {
             "date": "2026-10-20",

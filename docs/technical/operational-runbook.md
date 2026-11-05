@@ -124,7 +124,7 @@
    python3 -B -m unittest discover -s tests -v
    behave
    ```
-   - **Expected Output**: 100% passing unit, HTTP integration, and Node.js behavioral tests (`tests/test_agy_service.py`, `tests/test_provisioning.py`, `tests/test_auth_and_welcome.py`, and `tests/test_faf_export.py`), 6 features passed (32 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
+   - **Expected Output**: 100% passing unit, HTTP integration, and Node.js behavioral tests (`tests/test_agy_service.py`, `tests/test_provisioning.py`, `tests/test_provisioning_clients.py`, `tests/test_auth_and_welcome.py`, `tests/test_faf_export.py`, `tests/test_uae_compliance.py`, and `tests/test_whatsapp_workflows.py`), 6 features passed (35 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
 
 ---
 

@@ -224,3 +224,135 @@ def step_verify_admin_upgrade_approved(context) -> None:
     assert context.registered_company_name in table_text, (
         f"Expected '{context.registered_company_name}' in updated /admin table"
     )
+
+
+# --- WhatsApp-First Workflows & Camera Receipt OCR ---
+
+
+@when(
+    'the user fills a WhatsApp-ready customer invoice for "{customer_name}" with phone "{phone}" and payment link "{payment_link}" for "{item_desc}" quantity "{qty}" at rate "{rate}" AED'
+)
+def step_fill_whatsapp_customer_invoice(
+    context, customer_name: str, phone: str, payment_link: str, item_desc: str, qty: str, rate: str
+) -> None:
+    unique_customer = f"{customer_name} {context.scenario_uid}"
+    context.last_invoice_customer = unique_customer
+    context.driver.execute_script(
+        """
+        const c = JSON.parse(localStorage.getItem('bookkeeping_customers') || '[]');
+        c.push({ id: 'cust-wa-1', name: arguments[0], phone: arguments[1], trn: '100445566778803' });
+        localStorage.setItem('bookkeeping_customers', JSON.stringify(c));
+        const s = JSON.parse(localStorage.getItem('bookkeeping_settings') || '{}');
+        s.companyName = 'Lumen Management Consultancy L.L.C FZ';
+        s.companyAddress = 'Meydan Grandstand, 6th floor, Meydan Roa, MEYDAN ROAd, Sheba, Dubai,U.A.E., DUBAI, Dubai';
+        s.companyTrn = '100234567890003';
+        localStorage.setItem('bookkeeping_settings', JSON.stringify(s));
+        """,
+        unique_customer,
+        phone,
+    )
+    inv_num = context.transactions_page.fill_customer_invoice(
+        invoice_date="2026-11-05", due_date="2026-12-05", customer_name=unique_customer,
+        item_description=item_desc, qty=qty, rate=rate, vat_treatment="standard",
+    )
+    context.base_page.fill_input("custPaymentLink", payment_link)
+    context.last_invoice_num = inv_num
+    context.created_resources.append(("customer", unique_customer))
+    context.created_resources.append(("ledger", inv_num))
+
+
+@then(
+    'the bilingual E-Invoice preview should display "{arabic_heading}", payment link "{payment_link}", and a 1-tap WhatsApp share URL for "{expected_phone}"'
+)
+def step_verify_bilingual_whatsapp_preview(
+    context, arabic_heading: str, payment_link: str, expected_phone: str
+) -> None:
+    from features.config import SCREENSHOTS_DIR
+
+    # 1. Verify default English-only PDF preview
+    preview_en = context.base_page.get_text_by_id("modalBody")
+    assert "TAX INVOICE" in preview_en, f"Expected 'TAX INVOICE' in English preview, got:\n{preview_en[:400]}"
+    assert "BILLED TO:" in preview_en.upper(), f"Expected 'Billed To:' in English preview, got:\n{preview_en[:400]}"
+    assert "Invoice Date" in preview_en and "Terms" in preview_en and "Due Date" in preview_en, f"Missing right-side fields:\n{preview_en[:400]}"
+    assert "Dirhams Only." in preview_en, f"Expected 'Dirhams Only.' in Amount in Words:\n{preview_en}"
+    assert "This is a computer generated document and does not need a signature." in preview_en, f"Missing footer note:\n{preview_en}"
+    assert arabic_heading not in preview_en, "English-only PDF preview must not mix Arabic headings"
+    assert payment_link in preview_en, f"Expected payment link '{payment_link}' in English preview"
+    table_bounds = context.driver.execute_script(
+        "const t = document.querySelector('#modalBody .ei-table');"
+        "const p = document.querySelector('#modalBody .e-invoice-preview');"
+        "const l = document.querySelector('#modalBody .ei-brand-left');"
+        "const c = document.querySelector('#modalBody .ei-company-right');"
+        "const tr = t.getBoundingClientRect(), pr = p.getBoundingClientRect();"
+        "const lr = l.getBoundingClientRect(), cr = c.getBoundingClientRect();"
+        "const overflowCells = Array.from(t.querySelectorAll('th, td')).filter(el => el.scrollWidth > el.clientWidth + 2).length;"
+        "return { tableFitsPreview: tr.right <= pr.right + 1 && tr.left >= pr.left - 1, overflowCells, sameHeaderRow: Math.abs(lr.top - cr.top) < 15 && cr.left > lr.right };"
+    )
+    assert table_bounds["tableFitsPreview"] and table_bounds["overflowCells"] == 0 and table_bounds["sameHeaderRow"], f"Layout/table bounds check failed: {table_bounds}"
+    context.base_page.click_id("btnShareWhatsApp")
+    context.driver.save_screenshot(str(SCREENSHOTS_DIR / "english_only_invoice_pdf_modal.png"))
+
+    # Verify @media print isolation (background .app-layout and modal header/footer hidden, full invoice visible)
+    context.driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {"media": "print"})
+    print_styles = context.driver.execute_script(
+        "return {"
+        "  appLayout: window.getComputedStyle(document.querySelector('.app-layout')).display,"
+        "  modalHeader: window.getComputedStyle(document.querySelector('#invoiceModal .modal-header')).display,"
+        "  modalFooter: window.getComputedStyle(document.querySelector('#invoiceModal .modal-footer')).display"
+        "};"
+    )
+    assert print_styles["appLayout"] == "none", f"Expected .app-layout hidden in @media print, got {print_styles}"
+    assert print_styles["modalHeader"] == "none", f"Expected modal-header hidden in @media print, got {print_styles}"
+    assert print_styles["modalFooter"] == "none", f"Expected modal-footer hidden in @media print, got {print_styles}"
+    context.driver.save_screenshot(str(SCREENSHOTS_DIR / "invoice_print_media_preview.png"))
+    context.driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {"media": "screen"})
+
+    # 2. Switch language selector to Arabic-only ('ar') and verify Arabic-only PDF preview & WhatsApp message
+    context.base_page.select_by_value_or_text("modalDocLangSelect", "ar")
+    preview_ar = context.base_page.get_text_by_id("modalBody")
+    assert arabic_heading in preview_ar, f"Expected '{arabic_heading}' in Arabic preview, got:\n{preview_ar[:400]}"
+    assert "TAX INVOICE" not in preview_ar, "Arabic-only PDF preview must not mix English headings"
+    assert payment_link in preview_ar, f"Expected payment link '{payment_link}' in Arabic preview"
+    context.base_page.click_id("btnShareWhatsApp")
+    wa_url = context.driver.execute_script("return window.__lastWhatsAppShareUrl || '';")
+    assert f"https://wa.me/{expected_phone}?text=" in wa_url, f"Expected wa.me URL for {expected_phone}, got: {wa_url}"
+    context.driver.save_screenshot(str(SCREENSHOTS_DIR / "arabic_only_invoice_pdf_modal.png"))
+    context.base_page.dismiss_modals_if_present()
+
+
+@when("the user snaps a camera receipt photo in the Expenses module for OCR extraction")
+def step_snap_camera_receipt_in_expenses(context) -> None:
+    from pathlib import Path
+
+    sample_png = Path("/tmp/sample_camera_receipt.png")
+    context.transactions_page.generate_sample_supplier_invoice_png(sample_png)
+    cam_input = context.driver.find_element("id", "expCameraInput")
+    cam_input.send_keys(str(sample_png))
+    context.base_page.wait_until(
+        lambda d: d.find_element("id", "expVendorTrn").get_attribute("value") == "100234567890003"
+    )
+
+
+@then(
+    'the Expense OCR form should auto-populate Vendor TRN "{expected_trn}", payee "{expected_payee}", net "{expected_net}", and VAT "{expected_vat}"'
+)
+def step_verify_expense_ocr_populated(
+    context, expected_trn: str, expected_payee: str, expected_net: str, expected_vat: str
+) -> None:
+    assert context.base_page.get_value_by_id("expVendorTrn") == expected_trn
+    assert context.base_page.get_value_by_id("expPayee") == expected_payee
+    assert float(context.base_page.get_value_by_id("expAmount")) == float(expected_net)
+    assert float(context.base_page.get_value_by_id("expVat")) == float(expected_vat)
+    assert "Valid UAE TRN" in context.base_page.get_text_by_id("expTrnStatusBadge")
+
+
+@when("the user saves the OCR-extracted expense")
+def step_save_ocr_expense(context) -> None:
+    context.base_page.click_id("expSaveBtn")
+
+
+@then('the Expense History table should display Vendor TRN "{expected_trn}" and total "{expected_total}"')
+def step_verify_expense_history_trn(context, expected_trn: str, expected_total: str) -> None:
+    body_text = context.base_page.get_text_by_id("expListBody")
+    assert f"TRN: {expected_trn}" in body_text, f"Expected 'TRN: {expected_trn}' in expListBody, got:\n{body_text}"
+    assert expected_total in body_text, f"Expected '{expected_total}' in expListBody, got:\n{body_text}"

@@ -150,13 +150,17 @@ def step_verify_art59_customer_invoice_summary(
     )
 
 
-@then('the E-Invoice preview modal should display Date of Supply "{expected_supply_date}", Discount, VAT Rate, and VAT Amount')
-def step_verify_art59_einvoice_preview_fields(context, expected_supply_date: str) -> None:
+@then('the E-Invoice preview modal should display Invoice Date "{expected_issue_date}", Terms, Due Date, Discount, VAT Rate, and VAT Amount')
+@then('the E-Invoice preview modal should display Date of Supply "{expected_issue_date}", Discount, VAT Rate, and VAT Amount')
+def step_verify_art59_einvoice_preview_fields(context, expected_issue_date: str) -> None:
     preview_text = getattr(context, "einvoice_preview_text", "")
     assert "TAX INVOICE" in preview_text, f"Expected 'TAX INVOICE' in preview, got:\n{preview_text[:400]}"
-    assert "Date of Supply" in preview_text and expected_supply_date in preview_text, (
-        f"Expected Date of Supply '{expected_supply_date}' in preview, got:\n{preview_text[:500]}"
+    assert "Invoice Date" in preview_text and expected_issue_date in preview_text, (
+        f"Expected Invoice Date '{expected_issue_date}' in preview, got:\n{preview_text[:500]}"
     )
+    assert "Invoice No." in preview_text, f"Expected 'Invoice No.' in preview, got:\n{preview_text[:500]}"
+    assert "Terms" in preview_text, f"Expected 'Terms' in preview, got:\n{preview_text[:500]}"
+    assert "Due Date" in preview_text, f"Expected 'Due Date' in preview, got:\n{preview_text[:500]}"
     preview_upper = preview_text.upper()
     assert "DISCOUNT" in preview_upper, "Expected 'Discount' column/row in preview"
     assert "VAT RATE" in preview_upper, "Expected 'VAT Rate' column in preview"
