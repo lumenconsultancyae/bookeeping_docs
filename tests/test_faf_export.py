@@ -374,6 +374,88 @@ assert.strictEqual(billFromPo.subtotal, '200.00');
 assert.strictEqual(billFromPo.tax, '10.00');
 assert.strictEqual(billFromPo.total, '210.00');
 
+const CorporateTaxTracker = require(path.join(appDir, 'corp-tax-tracker.js'));
+const ctBelow = CorporateTaxTracker.calculate({
+    totalRevenue: 250000,
+    totalExpenses: 70000,
+    ctAddBacks: 0,
+    companyType: 'Mainland',
+    smallBusinessRelief: false
+});
+assert.strictEqual(ctBelow.netProfit, 180000);
+assert.strictEqual(ctBelow.taxableIncome, 180000);
+assert.strictEqual(ctBelow.zeroBracketRemaining, 195000);
+assert.strictEqual(ctBelow.thresholdPct, 48);
+assert.strictEqual(ctBelow.ctPayable, 0);
+assert.strictEqual(ctBelow.regimeCode, 'below_threshold');
+assert.strictEqual(ctBelow.sbrEligibleByRevenue, true);
+
+const ctAbove = CorporateTaxTracker.calculate({
+    totalRevenue: 600000,
+    totalExpenses: 100000,
+    ctAddBacks: 25000,
+    companyType: 'Mainland',
+    smallBusinessRelief: false
+});
+assert.strictEqual(ctAbove.taxableIncome, 525000);
+assert.strictEqual(ctAbove.taxableAboveThreshold, 150000);
+assert.strictEqual(ctAbove.thresholdPct, 100);
+assert.strictEqual(ctAbove.ctPayable, 13500);
+assert.strictEqual(ctAbove.regimeCode, 'above_threshold');
+
+const ctSbrActive = CorporateTaxTracker.calculate({
+    totalRevenue: 900000,
+    totalExpenses: 300000,
+    ctAddBacks: 0,
+    companyType: 'Mainland',
+    smallBusinessRelief: true
+});
+assert.strictEqual(ctSbrActive.taxableIncome, 600000);
+assert.strictEqual(ctSbrActive.sbrElectiveActive, true);
+assert.strictEqual(ctSbrActive.ctPayable, 0);
+assert.strictEqual(ctSbrActive.regimeCode, 'sbr_active');
+
+const ctSbrExceeded = CorporateTaxTracker.calculate({
+    totalRevenue: 3200000,
+    totalExpenses: 2400000,
+    ctAddBacks: 0,
+    companyType: 'Mainland',
+    smallBusinessRelief: true
+});
+assert.strictEqual(ctSbrExceeded.sbrElectiveActive, false);
+assert.strictEqual(ctSbrExceeded.sbrDisqualifiedExceededCap, true);
+assert.strictEqual(ctSbrExceeded.ctPayable, 38250);
+assert.strictEqual(ctSbrExceeded.regimeCode, 'above_threshold');
+
+const ctQfzp = CorporateTaxTracker.calculate({
+    totalRevenue: 1500000,
+    totalExpenses: 500000,
+    ctAddBacks: 0,
+    companyType: 'Qualifying Free Zone',
+    smallBusinessRelief: false
+});
+assert.strictEqual(ctQfzp.isQualifyingFreeZone, true);
+assert.strictEqual(ctQfzp.ctPayable, 0);
+assert.strictEqual(ctQfzp.regimeCode, 'qualifying_free_zone');
+
+const elements = {};
+global.document = {
+    getElementById: (id) => {
+        if (!elements[id]) elements[id] = { textContent: '', className: '', style: {} };
+        return elements[id];
+    }
+};
+CorporateTaxTracker.renderWidget({
+    totalRevenue: 600000,
+    totalExpenses: 100000,
+    ctAddBacks: 25000,
+    companyType: 'Mainland',
+    smallBusinessRelief: false
+}, (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+assert.strictEqual(elements['ctTrackerTaxableIncome'].textContent, '525,000.00');
+assert.strictEqual(elements['ctTrackerEstimatedTax'].textContent, '13,500.00');
+assert.strictEqual(elements['ctTrackerThresholdBar'].style.width, '100.0%');
+
 console.log(JSON.stringify({ status: 'ok' }));
 """
         proc = subprocess.run(
@@ -386,6 +468,53 @@ console.log(JSON.stringify({ status: 'ok' }));
         self.assertEqual(proc.returncode, 0, proc.stderr)
         payload = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertEqual(payload["status"], "ok")
+
+
+class CorporateTaxTrackerUnitTests(unittest.TestCase):
+    """Verify the Home Dashboard 9% UAE Corporate Tax & Small Business Relief (AED 3M) Tracker widget."""
+
+    def test_index_html_wires_corp_tax_tracker_card_and_script(self) -> None:
+        index_html = _read_index_html_bundle()
+        tracker_js_path = APP_DIR / "corp-tax-tracker.js"
+
+        self.assertTrue(tracker_js_path.is_file(), "corp-tax-tracker.js must exist in bookkeeping-tool")
+        self.assertIn("corp-tax-tracker.js", index_html)
+        for dom_id in (
+            "corpTaxTrackerCard",
+            "ctTrackerStatusBadge",
+            "ctTrackerThresholdPct",
+            "ctTrackerThresholdBar",
+            "ctTrackerTaxableIncome",
+            "ctTrackerThresholdStatus",
+            "ctTrackerSbrStatus",
+            "ctTrackerSbrBar",
+            "ctTrackerSbrRevenue",
+            "ctTrackerSbrRemaining",
+            "ctTrackerEstimatedTax",
+            "ctTrackerEffectiveRate",
+            "ctTrackerAddBacks",
+        ):
+            self.assertIn(f'id="{dom_id}"', index_html)
+
+    def test_corp_tax_tracker_is_wired_to_dashboard_kpis_and_trial_balance(self) -> None:
+        tracker_js_path = APP_DIR / "corp-tax-tracker.js"
+        self.assertTrue(tracker_js_path.is_file(), "corp-tax-tracker.js must exist in bookkeeping-tool")
+        tracker_js = tracker_js_path.read_text(encoding="utf-8")
+        script_bundle = _read_script_js_bundle()
+
+        for sym in ("CorporateTaxTracker", "UAECorpTaxTracker", "calculate", "renderWidget", "375000", "3000000", "0.09"):
+            self.assertIn(sym, tracker_js)
+        self.assertIn("CorporateTaxTracker.renderWidget", script_bundle)
+        self.assertIn("CorporateTaxTracker.calculate", script_bundle)
+        supplier_bills_js = (APP_DIR / "app-supplier-bills.js").read_text(encoding="utf-8")
+        self.assertIn("CorporateTaxTracker.renderWidget", supplier_bills_js)
+        self.assertIn("isCorpTaxView || isTaxView", supplier_bills_js)
+        banking_trial_js = (APP_DIR / "app-banking-and-trial.js").read_text(encoding="utf-8")
+        self.assertIn("updateKPIs()", banking_trial_js)
+        self.assertIn("renderTrialBalance()", banking_trial_js)
+        assets_accruals_js = (APP_DIR / "app-assets-and-accruals.js").read_text(encoding="utf-8")
+        self.assertIn("updateKPIs()", assets_accruals_js)
+        self.assertIn("renderTrialBalance()", assets_accruals_js)
 
 
 if __name__ == "__main__":
