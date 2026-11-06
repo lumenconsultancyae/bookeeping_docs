@@ -153,13 +153,9 @@ console.log(JSON.stringify({{
     hasPrintTaxDocument: typeof cn.printTaxDocument === 'function'
 }}));
 """
-        proc = subprocess.run(
-            ["node", "-e", node_script],
-            env={"PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin", "APP_DIR": str(BOOKKEEPING_TOOL_DIR)},
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        from tests.js_runner import run_node_script
+
+        proc = run_node_script(node_script, BOOKKEEPING_TOOL_DIR)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         out = json.loads(proc.stdout.strip())
 

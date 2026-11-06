@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 from selenium.common.exceptions import (
-    NoAlertPresentException,
     NoSuchElementException,
     StaleElementReferenceException,
     TimeoutException,
@@ -311,29 +310,51 @@ class BasePage:
             """
         )
 
+    # In-app feedback (ui-feedback.js): styled confirm/prompt dialogs and toasts replace native dialogs.
+    _FEEDBACK_PROBE_JS = """
+        const [accept] = arguments;
+        const dialog = document.querySelector('.lumen-dialog-backdrop .lumen-dialog');
+        if (dialog) {
+            const pick = (sel) => dialog.querySelector(sel);
+            const text = (pick('.lumen-dialog__message') || pick('.lumen-dialog__title')).textContent.trim();
+            const btn = accept ? pick('[data-dialog-action="confirm"]')
+                : (pick('[data-dialog-action="cancel"]') || pick('[data-dialog-action="confirm"]'));
+            btn.click();
+            return { kind: 'dialog', text };
+        }
+        const toasts = Array.from(document.querySelectorAll('#lumenToastRegion .lumen-toast:not([data-leaving])'));
+        if (toasts.length === 0) return null;
+        const latest = toasts[toasts.length - 1];
+        toasts.forEach((t) => t.querySelector('.lumen-toast__close').click());
+        return { kind: 'toast', text: latest.querySelector('.lumen-toast__message').textContent.trim() };
+    """
+
     def accept_alert_if_present(self, timeout: float = 3.0) -> str | None:
-        """Wait briefly for native browser alert/confirm dialog(s), accept all in sequence, and return the last text."""
+        """Wait for in-app feedback: confirm any styled dialog(s), read and dismiss toasts, and return the last text."""
         last_text: str | None = None
         current_timeout = timeout
         while True:
             try:
-                alert = WebDriverWait(self.driver, current_timeout, poll_frequency=0.05).until(
-                    lambda d: d.switch_to.alert
+                result = WebDriverWait(self.driver, current_timeout, poll_frequency=0.05).until(
+                    lambda d: d.execute_script(self._FEEDBACK_PROBE_JS, True)
                 )
-                last_text = alert.text
-                alert.accept()
-                current_timeout = 0.4
-            except (TimeoutException, NoAlertPresentException):
+            except TimeoutException:
                 break
+            last_text = result.get("text")
+            current_timeout = 0.6
         return last_text
 
+    def read_feedback_message(self, timeout: float = 3.0) -> str | None:
+        """Alias with intent-revealing name for steps that only read a toast message."""
+        return self.accept_alert_if_present(timeout=timeout)
+
     def dismiss_any_alert(self) -> None:
-        """Idempotently accept any open browser alert or confirmation dialog(s)."""
+        """Idempotently cancel any open in-app dialog and dismiss visible toasts (never confirms)."""
         for _ in range(3):
             try:
-                alert = self.driver.switch_to.alert
-                alert.accept()
-            except NoAlertPresentException:
+                if not self.driver.execute_script(self._FEEDBACK_PROBE_JS, False):
+                    break
+            except Exception:
                 break
 
     def dismiss_modals_if_present(self) -> None:

@@ -142,6 +142,68 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
         i18n_css = i18n_css_path.read_text(encoding="utf-8")
         self.assertIn('[dir="rtl"]', i18n_css)
 
+    def test_enterprise_ux_palette_layout_monograms_and_docs_gallery(self) -> None:
+        css_files = ("style.css", "components.css", "theme-pro.css", "welcome.css", "profiles.css", "i18n.css", "admin.css")
+        style_bundle = "\n".join((APP_DIR / name).read_text(encoding="utf-8") for name in css_files)
+
+        # 1. Unified Enterprise Finance Navy & Royal Sapphire tokens & aliases
+        for token in (
+            "--color-surface-canvas",
+            "--color-surface-elevated",
+            "--color-border-focus",
+            "--text-color",
+            "--primary-color",
+            "--hover-color",
+            "--danger-color",
+            "#0c1a2e",
+            "#1d4ed8",
+            ".two-col-layout",
+            ".data-grid",
+            ".editable-grid",
+            ".form-summary-box",
+            ".financial-summary",
+            "content: attr(data-abbr)",
+        ):
+            self.assertIn(token, style_bundle)
+
+        # 2. Zero legacy neon purple/indigo hex codes across all stylesheets
+        for legacy_color in ("#8b5cf6", "#a855f7", "#6366f1", "#4f46e5", "#e0e7ff", "#ede9fe"):
+            self.assertNotIn(legacy_color, style_bundle.lower())
+
+        # 3. Collapsed sidebar monogram wiring & absence of missing-glyph emojis
+        router_js = (APP_DIR / "app-core-and-router.js").read_text(encoding="utf-8")
+        self.assertIn("item.dataset.abbr", router_js)
+        self.assertIn("item.closest('.nav-dropdown-content')", router_js)
+        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<span class="kbd-hint">Ctrl K</span>', index_html)
+        self.assertNotIn("⌘", index_html)
+
+        # 4. UX documentation and screenshot gallery completeness
+        import agy_service
+
+        for chart_token in ("parent.clientWidth", "#067647", "#b42318"):
+            self.assertIn(chart_token, agy_service.CHART_JS_SHIM)
+
+        ux_doc = (REPO_ROOT / "docs" / "UX_STYLE_IMPROVEMENTS.md").read_text(encoding="utf-8")
+        readme_doc = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        arch_doc = (REPO_ROOT / "docs" / "technical" / "architecture-and-execution-flow.md").read_text(encoding="utf-8")
+        sdd_doc = (REPO_ROOT / "docs" / "technical" / "sdd-system-design.md").read_text(encoding="utf-8")
+        ug_doc = (REPO_ROOT / "docs" / "product" / "user-guide-and-release-notes.md").read_text(encoding="utf-8")
+        self.assertIn("docs/UX_STYLE_IMPROVEMENTS.md", readme_doc)
+        self.assertIn("item.dataset.abbr", arch_doc)
+        self.assertIn("data-abbr", sdd_doc)
+        self.assertIn("Enterprise Finance Navy", ug_doc)
+        self.assertNotIn("bookkeeping-tool", ux_doc)
+        next_dir = REPO_ROOT / "docs" / "screenshots" / "ux_improvements" / "next"
+        self.assertNotEqual(
+            (next_dir / "07_after_credit_notes.png").read_bytes(),
+            (next_dir / "07b_after_credit_notes_card.png").read_bytes(),
+        )
+        for sub in ("initial", "next", "round2/before", "round2/after"):
+            for png in sorted((REPO_ROOT / "docs" / "screenshots" / "ux_improvements" / sub).glob("*.png")):
+                rel_ref = f"screenshots/ux_improvements/{sub}/{png.name}"
+                self.assertIn(rel_ref, ux_doc, f"Unlinked screenshot in UX_STYLE_IMPROVEMENTS.md: {rel_ref}")
+
 
 class BehavioralAuthTenantAndEdgeProxyTests(unittest.TestCase):
     """Execute `plan-access.js`, `profiles-storage.js`, `auth.js`, and `functions/api/[[path]].js` in Node.js."""
@@ -341,13 +403,9 @@ assert(!backing.has('bookkeeping_history_v2'));
     process.exit(1);
 });
 """
-        proc = subprocess.run(
-            ["node", "-e", node_script],
-            env={"PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin", "APP_DIR": str(APP_DIR)},
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        from tests.js_runner import run_node_script
+
+        proc = run_node_script(node_script, APP_DIR)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         payload = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertEqual(payload["status"], "ok")

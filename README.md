@@ -32,6 +32,8 @@ bookeeping_docs/
 ├── behave.ini                                       # Behave BDD runner configuration
 ├── requirements.txt                                 # Python BDD & WebDriver dependencies
 ├── docs/
+│   ├── UX_STYLE_IMPROVEMENTS.md                     # UI/UX style audit, unified palette & before/after gallery
+│   ├── screenshots/ux_improvements/                 # Initial (before) & next (after) UI state screenshots
 │   ├── product/
 │   │   ├── prd-product-requirements.md              # Product Requirements Document (PRD)
 │   │   └── user-guide-and-release-notes.md          # Customer-facing User Guide & Release Notes
@@ -85,6 +87,7 @@ bookeeping_docs/
 | [`docs/technical/operational-runbook.md`](docs/technical/operational-runbook.md) | Operations | Local and production (AWS EC2 + Cloudflare) deployment runbook with prerequisites, sequential execution commands, verification signals, and rollback steps. |
 | [`docs/diagrams/system-architecture.drawio`](docs/diagrams/system-architecture.drawio) | Architecture Diagram | Normalized Draw.io system architecture diagram across Browser SPA, Cloudflare Edge (`functions/api/[[path]].js`), Nginx Proxy (`bookkeeping-web`), and `agy-ai` (`bookkeeping-agy-ai`) services. |
 | [`docs/diagrams/data-flow-and-ledger.drawio`](docs/diagrams/data-flow-and-ledger.drawio) | Data-Flow Diagram | Normalized Draw.io transaction ingestion, double-entry ledger decomposition, and financial statement pipeline diagram. |
+| [`docs/UX_STYLE_IMPROVEMENTS.md`](docs/UX_STYLE_IMPROVEMENTS.md) | UX & Design | Visual audit, unified Enterprise Finance Navy & Royal Sapphire design token specification, Round 2 interaction-pattern overhaul (in-app dialogs & toasts, inline validation, paginated tables, responsive drawer), and complete before/after screenshot gallery across all application views, modals and device widths. |
 
 ---
 

@@ -372,6 +372,8 @@ class CloudflareAndAwsProvisioningServiceTests(unittest.TestCase):
 class TestRepositoryFileLineBudget(unittest.TestCase):
     """Guardrail ensuring no tracked or modular file in either repository exceeds 550 lines."""
 
+    BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".woff", ".woff2"}
+
     def test_all_files_are_at_most_550_lines(self) -> None:
         app_root = REPO_ROOT.parent / "bookkeeping-tool"
         for repo_root in (REPO_ROOT, app_root):
@@ -387,7 +389,7 @@ class TestRepositoryFileLineBudget(unittest.TestCase):
             oversized: list[str] = []
             for rel_path in proc.stdout.splitlines():
                 file_path = repo_root / rel_path
-                if not file_path.is_file():
+                if not file_path.is_file() or file_path.suffix.lower() in self.BINARY_EXTENSIONS:
                     continue
                 try:
                     line_count = len(file_path.read_text(encoding="utf-8", errors="ignore").splitlines())

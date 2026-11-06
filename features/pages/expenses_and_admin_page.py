@@ -134,11 +134,11 @@ class ExpensesAndAdminPage(BasePage):
         """Click `#btnRequestPlanUpgrade` in `#view-settings`, confirm the modal, and return `#planSettingsCard` text."""
         self.click_id("btnRequestPlanUpgrade")
         self.wait_until(
-            lambda d: len(d.find_elements(By.CSS_SELECTOR, '.profile-modal-overlay [data-action="ok"]')) > 0
+            lambda d: len(d.find_elements(By.CSS_SELECTOR, '.lumen-dialog-backdrop [data-dialog-action="confirm"]')) > 0
         )
         self.driver.execute_script(
             """
-            const okBtn = document.querySelector('.profile-modal-overlay [data-action="ok"]');
+            const okBtn = document.querySelector('.lumen-dialog-backdrop [data-dialog-action="confirm"]');
             if (okBtn) okBtn.click();
             """
         )

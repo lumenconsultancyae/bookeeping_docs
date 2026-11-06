@@ -27,6 +27,7 @@ from features.pages.expenses_and_admin_page import ExpensesAndAdminPage
 from features.pages.payroll_and_assets_page import PayrollAndAssetsPage
 from features.pages.reports_and_settings_page import ReportsAndSettingsPage
 from features.pages.transactions_page import TransactionsPage
+from features.pages.ux_patterns_page import UxPatternsPage
 from features.support_server import start_background_server
 
 
@@ -86,6 +87,7 @@ def before_scenario(context, scenario) -> None:
     context.payroll_page = PayrollAndAssetsPage(context.driver, context.base_url)
     context.reports_page = ReportsAndSettingsPage(context.driver, context.base_url)
     context.expenses_admin_page = ExpensesAndAdminPage(context.driver, context.base_url)
+    context.ux_page = UxPatternsPage(context.driver, context.base_url)
 
 
 def after_step(context, step) -> None:
@@ -109,6 +111,8 @@ def after_scenario(context, scenario) -> None:
         pass
     finally:
         try:
+            if "responsive" in scenario.tags:
+                context.driver.set_window_size(1440, 900)
             context.base_page.dismiss_modals_if_present()
             context.base_page.cleanup_created_resources(context.created_resources)
         except Exception:

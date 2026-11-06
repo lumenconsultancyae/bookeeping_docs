@@ -458,13 +458,9 @@ assert.strictEqual(elements['ctTrackerThresholdBar'].style.width, '100.0%');
 
 console.log(JSON.stringify({ status: 'ok' }));
 """
-        proc = subprocess.run(
-            ["node", "-e", node_script],
-            env={"PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin", "APP_DIR": str(APP_DIR)},
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        from tests.js_runner import run_node_script
+
+        proc = run_node_script(node_script, APP_DIR)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         payload = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertEqual(payload["status"], "ok")

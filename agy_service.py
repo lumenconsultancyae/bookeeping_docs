@@ -55,21 +55,30 @@ CHART_JS_SHIM = """(function(window) {
             try {
                 const canvas = this.ctx && this.ctx.canvas ? this.ctx.canvas : this.ctx;
                 if (!canvas || !canvas.getContext) return;
-                const c = canvas.getContext('2d'), w = canvas.width || 600, h = canvas.height || 260;
-                c.clearRect(0, 0, w, h); c.fillStyle = '#f8fafc'; c.fillRect(0, 0, w, h);
-                const labels = (this.config.data && this.config.data.labels) || [];
-                const datasets = (this.config.data && this.config.data.datasets) || [];
-                const barWidth = Math.max(16, Math.floor((w - 80) / Math.max(labels.length * 3, 1)));
-                labels.forEach((label, idx) => {
-                    const xBase = 50 + idx * (barWidth * 2.5);
-                    datasets.forEach((ds, dIdx) => {
-                        const val = Number((ds.data && ds.data[idx]) || 0);
-                        const barH = val > 0 ? Math.min(h - 60, Math.max(12, Math.log10(val + 10) * 35)) : 4;
-                        c.fillStyle = ds.backgroundColor || (dIdx === 0 ? '#10b981' : '#f43f5e');
-                        c.fillRect(xBase + dIdx * (barWidth + 4), h - 35 - barH, barWidth, barH);
-                    });
-                    c.fillStyle = '#475569'; c.font = '12px sans-serif'; c.fillText(String(label), xBase, h - 15);
+                const parent = canvas.parentElement;
+                const w = canvas.width = Math.max(480, (parent && parent.clientWidth ? parent.clientWidth - 48 : 680));
+                const h = canvas.height = Math.max(210, (parent && parent.clientHeight ? parent.clientHeight - 48 : 240));
+                const c = canvas.getContext('2d'), padL = 56, padR = 24, padT = 36, padB = 34, plotW = w - padL - padR, plotH = h - padT - padB;
+                c.clearRect(0, 0, w, h); c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h);
+                c.strokeStyle = '#e4e7ec'; c.lineWidth = 1;
+                for (let g = 0; g <= 4; g++) { const y = padT + (plotH * g) / 4; c.beginPath(); c.moveTo(padL, y); c.lineTo(w - padR, y); c.stroke(); }
+                const labels = (this.config.data && this.config.data.labels) || [], datasets = (this.config.data && this.config.data.datasets) || [];
+                datasets.forEach((ds, dIdx) => {
+                    const lx = w - padR - (datasets.length - dIdx) * 125;
+                    c.fillStyle = ds.backgroundColor || (dIdx === 0 ? '#067647' : '#b42318'); c.fillRect(lx, 10, 10, 10);
+                    c.fillStyle = '#475467'; c.font = '500 11px Inter, sans-serif'; c.fillText(String(ds.label || (dIdx === 0 ? 'Cash In' : 'Cash Out')), lx + 15, 19);
                 });
+                const slotW = plotW / Math.max(labels.length, 1), barW = Math.min(28, Math.max(14, Math.floor(slotW / 3.2)));
+                labels.forEach((label, idx) => {
+                    const xCenter = padL + idx * slotW + slotW / 2;
+                    datasets.forEach((ds, dIdx) => {
+                        const val = Number((ds.data && ds.data[idx]) || 0), barH = val > 0 ? Math.min(plotH - 12, Math.max(14, Math.log10(val + 10) * 38)) : 6;
+                        const bx = xCenter + (dIdx - (datasets.length - 1) / 2) * (barW + 6) - barW / 2;
+                        c.fillStyle = ds.backgroundColor || (dIdx === 0 ? '#067647' : '#b42318'); c.fillRect(bx, padT + plotH - barH, barW, barH);
+                    });
+                    c.fillStyle = '#475467'; c.font = '500 11px Inter, sans-serif'; c.textAlign = 'center'; c.fillText(String(label), xCenter, h - 12);
+                });
+                c.textAlign = 'start';
             } catch (e) {}
         }
         destroy() {}
