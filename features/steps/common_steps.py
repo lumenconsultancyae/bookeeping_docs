@@ -143,3 +143,21 @@ def step_verify_welcome_hero_heading(context, expected_text: str) -> None:
 @when('a verification screenshot "{screenshot_name}" is captured')
 def step_capture_named_screenshot(context, screenshot_name: str) -> None:
     context.base_page.capture_step_screenshot(screenshot_name)
+
+
+@then(
+    'the welcome pricing plans should display Basic at "{basic_price}" AED and "{promo_text}" promotion on all tiers'
+)
+def step_verify_welcome_pricing_and_promo(
+    context,
+    basic_price: str,
+    promo_text: str,
+) -> None:
+    info = context.base_page.get_welcome_pricing_plans()
+    assert len(info) == 3, f"Expected 3 plan cards on /welcome, got {len(info)}: {info}"
+    basic_card = next((c for c in info if "Basic" in c["title"]), None)
+    assert basic_card and basic_card["amount"].strip() == basic_price, (
+        f"Expected Basic plan price '{basic_price}', got {basic_card}"
+    )
+    for card in info:
+        assert promo_text in card["promo"], f"Expected '{promo_text}' on tier '{card['title']}', got '{card['promo']}'"

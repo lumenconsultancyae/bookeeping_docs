@@ -106,6 +106,69 @@ class PayrollAndAssetsPage(BasePage):
         """Return the text of `#savedTimesheetsContainer`."""
         return self.get_text_by_id("savedTimesheetsContainer")
 
+    def configure_company_branding(
+        self,
+        company_name: str,
+        company_address: str,
+        company_phone: str,
+        logo_data_uri: str,
+    ) -> None:
+        """Populate Company Settings (`#companyName`, `#companyAddress`, `#companyPhone`, logo) and save."""
+        self.fill_input("companyName", company_name)
+        self.fill_input("companyAddress", company_address)
+        self.fill_input("companyPhone", company_phone)
+        self.click_id("btnSaveCompanySettings")
+        self.accept_alert_if_present(timeout=1.5)
+        self.driver.execute_script(
+            """
+            const s = JSON.parse(localStorage.getItem('bookkeeping_settings') || '{}');
+            s.companyLogo = arguments[0];
+            localStorage.setItem('bookkeeping_settings', JSON.stringify(s));
+            const preview = document.getElementById('companyLogoPreview');
+            if (preview) { preview.src = arguments[0]; preview.style.display = 'block'; }
+            """,
+            logo_data_uri,
+        )
+
+    def get_timesheet_employee_filter_options(self) -> list[str]:
+        """Return all option texts inside `#filterTimesheetEmployee` from the live DOM."""
+        sel_el = self.wait_until(lambda d: d.find_element(By.ID, "filterTimesheetEmployee"))
+        return [opt.text.strip() for opt in sel_el.find_elements(By.TAG_NAME, "option")]
+
+    def filter_timesheets_by_employee(self, employee_name: str) -> None:
+        """Select the option matching `employee_name` in `#filterTimesheetEmployee`."""
+        sel_el = self.wait_until(lambda d: d.find_element(By.ID, "filterTimesheetEmployee"))
+        target_value = ""
+        if employee_name and employee_name != "All Employees":
+            for opt in sel_el.find_elements(By.TAG_NAME, "option"):
+                if employee_name in opt.text:
+                    target_value = opt.get_attribute("value") or ""
+                    break
+        self.select_by_value_or_text("filterTimesheetEmployee", target_value)
+
+    def open_payslip_for_employee(self, period: str, employee_name: str) -> dict:
+        """Click the `Payslip` button for `employee_name` inside `#savedTimesheetsContainer` and return modal details."""
+        container = self.wait_until(lambda d: d.find_element(By.ID, "savedTimesheetsContainer"))
+        clicked = False
+        for row in container.find_elements(By.CSS_SELECTOR, "tbody tr"):
+            if employee_name in row.text:
+                btn = row.find_element(By.TAG_NAME, "button")
+                btn.click()
+                clicked = True
+                break
+        assert clicked, f"Payslip button for '{employee_name}' in period '{period}' not found"
+        self.wait_until(lambda d: d.find_element(By.ID, "invoiceModal").is_displayed())
+        doc_el = self.driver.find_element(By.ID, "modalBody")
+        modal_el = self.driver.find_element(By.ID, "invoiceModal")
+        result = {
+            "displayed": modal_el.is_displayed(),
+            "text": doc_el.text,
+            "html": doc_el.get_attribute("innerHTML") or "",
+        }
+        close_btn = self.driver.find_element(By.CSS_SELECTOR, "#modalFooter .btn-secondary")
+        close_btn.click()
+        return result
+
     # --- Fixed Assets (`#view-assets`) ---
 
     def register_fixed_asset_and_render(

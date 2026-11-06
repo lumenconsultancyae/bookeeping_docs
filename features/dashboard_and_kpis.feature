@@ -38,6 +38,7 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
   Scenario: Unauthenticated visitors are redirected to /welcome to register and can sign out and sign back in
     When an unauthenticated visitor opens the application root
     Then the browser should redirect to the "/welcome" entrypoint
+    And the welcome pricing plans should display Basic at "50" AED and "1 Month Free" promotion on all tiers
     When the visitor registers company "Lumen Advisory" with password "Lumen2026" on the "premium" plan
     Then the dashboard page title should be "Dashboard"
     And the topbar should display the signed-in user email

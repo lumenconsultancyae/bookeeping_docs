@@ -225,6 +225,22 @@ class BasePage:
             lambda d: d.find_element(By.CSS_SELECTOR, "main .hero h1").text.strip()
         )
 
+    def get_welcome_pricing_plans(self) -> list[dict[str, str]]:
+        """Return the rendered plan cards (`title`, `amount`, `promo`) inside `#plans` on `/welcome`."""
+        plans_el = self.wait_until(lambda d: d.find_element(By.ID, "plans"))
+        cards = plans_el.find_elements(By.CSS_SELECTOR, ".plan")
+        results: list[dict[str, str]] = []
+        for card in cards:
+            title_els = card.find_elements(By.TAG_NAME, "h2")
+            amount_els = card.find_elements(By.CSS_SELECTOR, ".plan-price .amount")
+            promo_els = card.find_elements(By.CSS_SELECTOR, ".plan-promo-pill")
+            results.append({
+                "title": title_els[0].text.strip() if title_els else "",
+                "amount": amount_els[0].text.strip() if amount_els else "",
+                "promo": promo_els[0].text.strip() if promo_els else "",
+            })
+        return results
+
     def is_view_displayed(self, view_id: str) -> bool:
         """Return True when `#<view_id>` is visible."""
         return bool(
