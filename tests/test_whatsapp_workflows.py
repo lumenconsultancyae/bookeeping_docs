@@ -60,6 +60,24 @@ class WhatsAppFirstWorkflowsUnitTests(unittest.TestCase):
         self.assertIn("vendorTrn", expenses_js)
         self.assertIn("extractReceiptTrnAndVat", expenses_js)
 
+        # Verify Customer Invoice Upload & PDF Text Extraction wiring
+        self.assertIn('id="custLoadingState"', quotes_invoices_view)
+        self.assertIn('id="custAiBanner"', quotes_invoices_view)
+        self.assertIn('id="custVisualPreview"', quotes_invoices_view)
+
+        core_js = (BOOKKEEPING_TOOL_DIR / "app-core-and-router.js").read_text(encoding="utf-8")
+        self.assertIn("window.extractPdfTextClientSide", core_js)
+
+        cust_js = (BOOKKEEPING_TOOL_DIR / "app-customer-invoices.js").read_text(encoding="utf-8")
+        self.assertIn("parseCustomerInvoiceText", cust_js)
+        self.assertIn("applyExtractedCustomerInvoice", cust_js)
+        self.assertIn("processCustInvoiceFile", cust_js)
+        self.assertIn("EXTRACTED DOCUMENT TEXT:", cust_js)
+        self.assertIn("window.getCustCurrentBase64Image", cust_js)
+
+        banking_js = (BOOKKEEPING_TOOL_DIR / "app-banking-and-trial.js").read_text(encoding="utf-8")
+        self.assertIn("window.getCustCurrentBase64Image", banking_js)
+
     def test_whatsapp_workflows_executes_behaviorally_in_node(self) -> None:
         script_path = BOOKKEEPING_TOOL_DIR / "whatsapp-workflows.js"
         credit_notes_path = BOOKKEEPING_TOOL_DIR / "credit-notes.js"
