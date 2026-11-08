@@ -346,7 +346,7 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as opt_ctx:
             urllib.request.urlopen(req_opt_bad, timeout=5)
         self.assertEqual(opt_ctx.exception.code, 403)
-        for path in ("/__vendor__/pdf.min.js", "/__vendor__/fonts.css", "/api/v1/ping"):
+        for path in ("/__vendor__/pdf.min.js", "/__vendor__/fonts.css", "/api/v1/ping", "/api/v1/prediction/937be8b1-663e-45a5-a9d7-b5c912ac1abd"):
             with urllib.request.urlopen(f"{self.base_url}{path}", timeout=5) as resp:
                 self.assertEqual(resp.status, 200)
         with self.assertRaises(urllib.error.HTTPError) as get_404:

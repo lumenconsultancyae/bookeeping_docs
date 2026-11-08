@@ -42,6 +42,7 @@ PORT = int(os.environ.get("AGY_PORT", "3000"))
 AGY_MODEL = os.environ.get("AGY_MODEL", "Gemini 4 Argon (High)")
 AGY_TIMEOUT = os.environ.get("AGY_TIMEOUT", "99999h")
 SUBPROCESS_TIMEOUT_SECONDS = int(os.environ.get("AGY_SUBPROCESS_TIMEOUT", "240"))
+_AGY_SEMAPHORE = threading.BoundedSemaphore(int(os.environ.get("AGY_MAX_CONCURRENT", "2")))
 MAX_REQUEST_BYTES = int(os.environ.get("AGY_MAX_REQUEST_BYTES", str(50 * 1024 * 1024)))
 AGY_API_SECRET = os.environ.get("AGY_API_SECRET", "").strip()
 REQUIRED_CLIENT_HEADER_VALUE = os.environ.get("AGY_CLIENT_HEADER_VALUE", "lumen-bookkeeping-web").strip()
@@ -278,7 +279,8 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
             "--print-timeout", AGY_TIMEOUT, "--add-dir", str(req_dir), "--print", full_prompt,
         ]
         try:
-            proc = subprocess.run(cmd, cwd=str(req_dir), capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False)
+            with _AGY_SEMAPHORE:
+                proc = subprocess.run(cmd, cwd=str(req_dir), capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False)
         except subprocess.TimeoutExpired as exc:
             raise PredictionTimeoutError("AI prediction timed out.", internal_detail=f"agy subprocess timed out after {SUBPROCESS_TIMEOUT_SECONDS}s") from exc
 
@@ -479,7 +481,7 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
             return self._send_bytes(PDF_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
         if parsed.path == "/__vendor__/fonts.css":
             return self._send_bytes(b"/* local font shim */\n", "text/css; charset=utf-8")
-        if parsed.path in ("/", "/health", "/api/v1/ping"):
+        if parsed.path in ("/", "/health", "/api/v1/ping") or parsed.path.startswith("/api/v1/prediction/"):
             return self._send_json({"status": "ok", "engine": "agy", "model": AGY_MODEL}, status=200)
         if parsed.path in ("/api/v1/state", "/api/v1/attachments", "/api/v1/auth/session"):
             try:
