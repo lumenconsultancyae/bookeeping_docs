@@ -19,8 +19,12 @@ class WhatsAppFirstWorkflowsUnitTests(unittest.TestCase):
     """Verify WhatsApp bilingual sharing, bilingual Tax Invoice preview, and camera receipt Vendor TRN OCR."""
 
     def test_index_html_and_views_wire_whatsapp_share_bilingual_preview_and_receipt_trn_ocr(self) -> None:
-        index_html = (BOOKKEEPING_TOOL_DIR / "index.html").read_text(encoding="utf-8")
-        self.assertIn('src="whatsapp-workflows.js', index_html)
+        entry_bundle = "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in (BOOKKEEPING_TOOL_DIR / "index.html", BOOKKEEPING_TOOL_DIR / "views-dashboard.js", BOOKKEEPING_TOOL_DIR / "react-app.js")
+            if p.is_file()
+        )
+        self.assertIn("whatsapp-workflows.js", entry_bundle)
 
         settings_view = (BOOKKEEPING_TOOL_DIR / "views-reports-and-settings.js").read_text(encoding="utf-8")
         self.assertIn('id="companyPaymentLink"', settings_view)

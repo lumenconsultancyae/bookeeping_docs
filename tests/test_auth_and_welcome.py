@@ -71,7 +71,7 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
     def test_topbar_and_settings_render_authenticated_user_identity_and_signout(self) -> None:
         profiles_ui = (APP_DIR / "profiles-ui.js").read_text(encoding="utf-8")
         plan_gating = (APP_DIR / "plan-gating.js").read_text(encoding="utf-8")
-        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        index_html = "\n".join(p.read_text(encoding="utf-8") for p in [APP_DIR / "index.html", *sorted(APP_DIR.glob("views-*.js")), *sorted(APP_DIR.glob("react-*.js"))])
         self.assertIn("profiles-storage.js", index_html)
         self.assertIn("auth.js", index_html)
         self.assertIn("btnTopbarSignOut", profiles_ui)
@@ -97,7 +97,7 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
 
     def test_bilingual_en_ar_toggle_and_rtl_support_across_welcome_and_books_app(self) -> None:
         welcome_html = (APP_DIR / "welcome.html").read_text(encoding="utf-8")
-        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        index_html = "\n".join(p.read_text(encoding="utf-8") for p in [APP_DIR / "index.html", *sorted(APP_DIR.glob("views-*.js")), *sorted(APP_DIR.glob("react-*.js"))])
         i18n_js_path = APP_DIR / "i18n.js"
         i18n_css_path = APP_DIR / "i18n.css"
         self.assertIn("lumen_lang", (APP_DIR / "profiles-storage.js").read_text(encoding="utf-8"))
@@ -137,7 +137,7 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
         router_js = (APP_DIR / "app-core-and-router.js").read_text(encoding="utf-8")
         self.assertIn("item.dataset.abbr", router_js)
         self.assertIn("item.closest('.nav-dropdown-content')", router_js)
-        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        index_html = "\n".join(p.read_text(encoding="utf-8") for p in [APP_DIR / "index.html", *sorted(APP_DIR.glob("views-*.js"))])
         self.assertIn('<span class="kbd-hint">Ctrl K</span>', index_html)
         self.assertNotIn("⌘", index_html)
         for chart_token in ("parent.clientWidth", "#067647", "#b42318"):

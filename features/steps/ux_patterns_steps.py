@@ -185,3 +185,29 @@ def step_pick_from_drawer(context, view_label: str) -> None:
 def step_view_and_drawer_closed(context, view_id: str) -> None:
     assert context.ux_page.is_view_displayed(view_id)
     context.ux_page.wait_until(lambda d: not context.ux_page.drawer_state()["open"])
+
+
+@then('the React SPA root should be mounted with active route "{route_id}"')
+def step_react_root_mounted(context, route_id: str) -> None:
+    state = context.ux_page.wait_until(
+        lambda d: (s := context.ux_page.react_spa_state()) and s["hasRoot"] and s["activeView"] == route_id and not s["isUnknownRoute"] and s
+    )
+    assert state["reactVersion"].startswith("18."), f"Unexpected React state: {state}"
+
+
+@when('the user navigates to route hash "{route_id}"')
+def step_navigate_route_hash(context, route_id: str) -> None:
+    context.ux_page.navigate_hash(route_id)
+
+
+@then('the contextual NotFound fallback should be visible for route "{route_id}"')
+def step_not_found_visible(context, route_id: str) -> None:
+    state = context.ux_page.wait_until(
+        lambda d: (s := context.ux_page.react_spa_state()) and s["isUnknownRoute"] and s["notFoundVisible"] and s
+    )
+    assert route_id in state["notFoundText"], f"Expected '{route_id}' in NotFound fallback: {state}"
+
+
+@when("the user clicks Return to Dashboard on the NotFound fallback")
+def step_click_return_dashboard(context) -> None:
+    context.ux_page.click_id("btnReturnDashboard")

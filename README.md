@@ -37,6 +37,7 @@ bookeeping_docs/
 │   ├── test_uae_compliance.py                       # UAE Compliance Expiry Reminders, WPS .SIF (EDR/SCR) & Art. 51 Gratuity tests
 │   ├── test_ui_feedback_and_forms.py                # In-app toasts/confirmations & inline form validation tests
 │   ├── test_ui_tables_and_layout.py                 # Table pagination, search, row highlight & responsive drawer tests
+│   ├── test_react_migration.py                      # React 18 SPA runtime, hooks, query key cache, URL router & shell tests
 │   └── test_whatsapp_workflows.py                   # WhatsApp EN/AR invoice share, +971 phone, TRN OCR & executive print tests
 ├── behave.ini                                       # Behave BDD runner configuration
 ├── requirements.txt                                 # Python BDD & WebDriver dependencies
@@ -196,7 +197,7 @@ python3 -B -m unittest discover -s tests -v
 
 ### 2. Execute the Behave BDD E2E Suite
 ```bash
-# Run all 35 scenarios across all 6 features
+# Run all 41 scenarios across all 8 features
 behave
 
 # Run only @smoke tagged scenarios

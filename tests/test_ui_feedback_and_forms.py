@@ -39,7 +39,12 @@ class NativeDialogEliminationTests(unittest.TestCase):
 
     def test_index_loads_feedback_before_features_and_enhancers_after(self) -> None:
         html = (APP_DIR / "index.html").read_text(encoding="utf-8")
-        pos = {name: html.index(f'src="{name}') for name in (
+        manifest = "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in (APP_DIR / "index.html", APP_DIR / "views-dashboard.js", APP_DIR / "react-app.js")
+            if p.is_file()
+        )
+        pos = {name: manifest.index(name) for name in (
             "ui-feedback.js", "views-transactions.js", "profiles-ui.js", "app-core-and-router.js",
             "script.js", "i18n.js", "ui-forms.js", "ui-tables.js", "ui-layout.js")}
         self.assertLess(pos["ui-feedback.js"], pos["views-transactions.js"])

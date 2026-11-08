@@ -53,3 +53,11 @@ Feature: Professional interaction patterns — confirmations, inline validation,
     Then the sidebar drawer should be visible above a backdrop
     When the user picks "Customers" from the navigation drawer
     Then the "view-customer-list" view should be displayed with the drawer closed
+
+  @smoke
+  Scenario: The React SPA root synchronizes URL hash routes and renders a contextual fallback for unknown routes
+    Then the React SPA root should be mounted with active route "view-dashboard"
+    When the user navigates to route hash "view-missing-workspace-route"
+    Then the contextual NotFound fallback should be visible for route "view-missing-workspace-route"
+    When the user clicks Return to Dashboard on the NotFound fallback
+    Then the React SPA root should be mounted with active route "view-dashboard"

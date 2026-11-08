@@ -150,3 +150,34 @@ class UxPatternsPage(BasePage):
                      expanded: document.getElementById('btnSidebarToggle').getAttribute('aria-expanded'),
                      backdrop: Boolean(backdrop && getComputedStyle(backdrop).display !== 'none') };
             """)
+
+    def react_spa_state(self) -> dict[str, Any]:
+        return self.driver.execute_script(
+            """
+            const root = document.getElementById('root');
+            const nf = document.getElementById('reactNotFoundView');
+            const st = window.LumenReactStore ? window.LumenReactStore.getState() : {};
+            return {
+                hasRoot: Boolean(root && root.querySelector('.app-layout') && window.__lumenReactRoot),
+                reactVersion: window.React ? window.React.version : '',
+                activeView: st.activeView || '',
+                isUnknownRoute: Boolean(st.isUnknownRoute),
+                requestedRoute: st.requestedRoute || '',
+                notFoundVisible: Boolean(nf && !nf.hidden && getComputedStyle(nf).display !== 'none'),
+                notFoundText: nf ? nf.textContent : '',
+            };
+            """)
+
+    def navigate_hash(self, target_id: str) -> None:
+        self.driver.execute_script(
+            "window.location.hash = '#' + String(arguments[0] || '').replace(/^#/, '');",
+            target_id,
+        )
+        self.wait_until(
+            lambda d: d.execute_script(
+                "const st = window.LumenReactStore ? window.LumenReactStore.getState() : {};"
+                "const want = String(arguments[0] || '').replace(/^#/, '');"
+                "return st.activeView === want || st.requestedRoute === want;",
+                target_id,
+            )
+        )
