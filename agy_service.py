@@ -265,7 +265,7 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
         elif "json" in question.lower() or "extract" in question.lower() or "bank statement" in question.lower():
             full_prompt = (
                 "You are an accounting document extraction engine.\n"
-                "CRITICAL RULES:\n- Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
+                "CRITICAL RULES:\n- Do NOT call `read_file`, `list_dir`, `find_by_name`, `run_command`, `write_file`, `edit_file`, or any other tool.\n"
                 f"- Fulfill the extraction instructions below and respond ONLY with the requested ```json ... ``` code block (no extra prose):\n\n{question}"
             )
         else:
