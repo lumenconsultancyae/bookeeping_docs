@@ -150,7 +150,10 @@ class ExpensesAndAdminPage(BasePage):
     # --- Super-Admin Console (`/admin`) ---
 
     def open_and_sign_in_to_admin_console(self, email: str, password: str) -> None:
-        """Navigate to `/admin`, sign in if prompted, and wait for `#adminConsoleSection`."""
+        """Simulate a fresh browser session on another computer, navigate to `/admin`, sign in, and wait for `#adminConsoleSection`."""
+        self.driver.execute_script(
+            "try { window.localStorage.clear(); window.sessionStorage.clear(); } catch (_) {}"
+        )
         self.driver.get(f"{self.base_url}/admin")
         self.wait_until(
             lambda d: d.execute_script("return document.readyState === 'complete'")
@@ -174,6 +177,30 @@ class ExpensesAndAdminPage(BasePage):
             )
         )
         self.collect_severe_console_logs()
+
+    def open_books_for_company_in_admin(self, company_name: str) -> None:
+        """Click `[data-open-advisor]` (`Open Books`) for `company_name` in `/admin` and wait for `.app-layout`."""
+        self.driver.execute_script(
+            """
+            const rows = Array.from(document.querySelectorAll('#adminAccountsBody tr'));
+            const row = rows.find(r => r.innerText.includes(arguments[0]));
+            if (row) {
+                const btn = row.querySelector('[data-open-advisor]');
+                if (btn) btn.click();
+            }
+            """,
+            company_name,
+        )
+        self.wait_until(
+            lambda d: d.execute_script(
+                "return Boolean(document.querySelector('.app-layout') && document.readyState === 'complete');"
+            )
+        )
+        self.collect_severe_console_logs()
+
+    def get_physical_local_storage_keys(self) -> list[str]:
+        """Return the keys actually stored in physical `window.localStorage`."""
+        return self.driver.execute_script("return Object.keys(window.localStorage);")
 
     def get_admin_console_summary(self) -> dict[str, str]:
         """Return MRR KPI and tenant table text from `/admin`."""

@@ -14,13 +14,11 @@ DOCS_ROOT = WORKSPACE_ROOT / "bookeeping_docs"
 
 
 def run_node_script(script: str) -> dict:
-    completed = subprocess.run(
-        ["node", "-e", script],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return json.loads(completed.stdout.strip())
+    from tests.js_runner import run_node_script as _run_js
+    completed = _run_js(script, WEB_ROOT)
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr or completed.stdout)
+    return json.loads(completed.stdout.strip().splitlines()[-1])
 
 
 class TestPayslipAndTimesheetEmployeeFilter(unittest.TestCase):

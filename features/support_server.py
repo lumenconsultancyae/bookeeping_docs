@@ -17,8 +17,9 @@ import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
+import agy_service
 from features.config import APP_SOURCE_DIR, HOST, PORT
 
 CHART_JS_SHIM = """
@@ -327,6 +328,36 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
         if req_path == "/__vendor__/fonts.css":
             self._send_bytes(b"/* local font shim */\n", "text/css; charset=utf-8")
             return
+        if req_path == "/api/v1/auth/session":
+            repo = agy_service.get_state_repo()
+            payload = repo.resolve_session(
+                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
+                account_header=self.headers.get("X-Lumen-Account"),
+                session_header=self.headers.get("X-Lumen-Session"),
+            )
+            self._send_bytes(json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            return
+        if req_path == "/api/v1/state":
+            repo = agy_service.get_state_repo()
+            caller_acc = repo.resolve_caller_from_headers(
+                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
+                account_header=self.headers.get("X-Lumen-Account"),
+                session_header=self.headers.get("X-Lumen-Session"),
+            )
+            payload = {"status": "ok", "state": repo.get_scoped_state(caller_acc)}
+            self._send_bytes(json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            return
+        if req_path == "/api/v1/attachments":
+            repo = agy_service.get_state_repo()
+            caller_acc = repo.resolve_caller_from_headers(
+                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
+                account_header=self.headers.get("X-Lumen-Account"),
+                session_header=self.headers.get("X-Lumen-Session"),
+            )
+            key = (parse_qs(parsed.query).get("key") or [""])[0]
+            payload = {"status": "ok", "key": key, "data": repo.get_attachment(key, account_id=caller_acc)}
+            self._send_bytes(json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            return
 
         if req_path in ("/", "/index.html"):
             index_file = APP_SOURCE_DIR / "index.html"
@@ -391,6 +422,32 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
         body_bytes = self.rfile.read(content_len) if content_len > 0 else b""
         body_text = body_bytes.decode("utf-8", errors="ignore")
 
+        if parsed.path == "/api/v1/auth/login":
+            repo = agy_service.get_state_repo()
+            req_obj = agy_service._parse_json_object(body_bytes)
+            res = repo.verify_login(str(req_obj.get("email") or ""), str(req_obj.get("password") or ""))
+            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            return
+        if parsed.path == "/api/v1/state":
+            repo = agy_service.get_state_repo()
+            caller_acc = repo.resolve_caller_from_headers(
+                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
+                account_header=self.headers.get("X-Lumen-Account"),
+                session_header=self.headers.get("X-Lumen-Session"),
+            )
+            res = agy_service._handle_state_post(body_bytes, repo, caller_acc)
+            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            return
+        if parsed.path == "/api/v1/attachments":
+            repo = agy_service.get_state_repo()
+            caller_acc = repo.resolve_caller_from_headers(
+                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
+                account_header=self.headers.get("X-Lumen-Account"),
+                session_header=self.headers.get("X-Lumen-Session"),
+            )
+            res = agy_service._handle_attachments_post(body_bytes, repo, caller_acc)
+            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            return
         if parsed.path.startswith("/api/"):
             response_obj = build_mock_ai_response(body_text)
             self._send_bytes(

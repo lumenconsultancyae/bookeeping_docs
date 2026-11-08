@@ -81,13 +81,19 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     Then the legal modal should display title "Cancellation" and mention "Cancel"
     When the visitor registers company "Al Noor Retail" with password "Lumen2026" on the "basic" plan
     Then the "Quotes & Estimates" navigation item should be locked with a plan badge
-    When the user navigates to the "Settings" view
+    And physical localStorage should contain only UI configuration keys
+    When the user navigates to the "Expenses" view
+    And the user records a direct expense for payee "DEWA Utility" of "400.00" AED on "6000 Office Supplies" paid from "1005 Bank" in "Dubai" with "standard" VAT
+    And the user navigates to the "Settings" view
     And the customer submits a plan upgrade request from Settings
     Then the Settings Subscription Plan card should display "Upgrade requested: Advance (Pending Admin Approval)"
     When the administrator signs in to the Super-Admin Console with email "admin@lumenconsultancy.net" and password "LumenAdmin2026"
     Then the Super-Admin Console should display MRR metrics and list the registered company with a pending upgrade
     When the administrator approves the pending upgrade request for the registered company
     Then the Super-Admin Console should show no pending upgrade request for the registered company
+    When the administrator opens the customer books for the registered company from the Super-Admin Console
+    And the user navigates to the "Expenses" view
+    Then the Expense History table should list payee "DEWA Utility" with VAT "20.00" and total "420.00"
 
   @smoke @corp_tax_tracker
   Scenario: Live 9% UAE Corporate Tax and Small Business Relief tracker updates on the Home Dashboard

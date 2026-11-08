@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""HTTP prediction service wrapping the `agy` CLI the same way Argiei worker instances execute it.
-
-Replaces the external Flowise AI container on port 3000 while preserving the
-`/api/v1/prediction/*` request/response contract expected by `script.js`.
-"""
+"""HTTP prediction service wrapping the `agy` CLI the same way Argiei worker instances execute it."""
 
 from __future__ import annotations
 
@@ -24,8 +20,22 @@ import subprocess
 import sys
 import tempfile
 import threading
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 import uuid
+
+from state_repository import (
+    ADMIN_EMAIL,
+    DEFAULT_ADMIN_HASH,
+    DEFAULT_ADMIN_SALT,
+    LOCAL_ONLY_KEYS,
+    LumenStateRepository,
+    compute_password_hash as _compute_password_hash,
+    is_excluded_state_key as _is_excluded_state_key,
+    resolve_default_state_db_path,
+    safe_json as _safe_json,
+    strip_account_secrets as _strip_account_secrets,
+    verify_password_hash as _verify_password_hash,
+)
 
 HOST = os.environ.get("AGY_HOST", "0.0.0.0")
 PORT = int(os.environ.get("AGY_PORT", "3000"))
@@ -59,8 +69,7 @@ CHART_JS_SHIM = """(function(window) {
                 const w = canvas.width = Math.max(480, (parent && parent.clientWidth ? parent.clientWidth - 48 : 680));
                 const h = canvas.height = Math.max(210, (parent && parent.clientHeight ? parent.clientHeight - 48 : 240));
                 const c = canvas.getContext('2d'), padL = 56, padR = 24, padT = 36, padB = 34, plotW = w - padL - padR, plotH = h - padT - padB;
-                c.clearRect(0, 0, w, h); c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h);
-                c.strokeStyle = '#e4e7ec'; c.lineWidth = 1;
+                c.clearRect(0, 0, w, h); c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h); c.strokeStyle = '#e4e7ec'; c.lineWidth = 1;
                 for (let g = 0; g <= 4; g++) { const y = padT + (plotH * g) / 4; c.beginPath(); c.moveTo(padL, y); c.lineTo(w - padR, y); c.stroke(); }
                 const labels = (this.config.data && this.config.data.labels) || [], datasets = (this.config.data && this.config.data.datasets) || [];
                 datasets.forEach((ds, dIdx) => {
@@ -95,14 +104,10 @@ PDF_JS_SHIM = """(function(window) {
                 return Promise.resolve({
                     getViewport: function(opts) { return { width: 600, height: 800, scale: (opts && opts.scale) || 1 }; },
                     render: function(renderCtx) {
-                        try {
-                            if (renderCtx && renderCtx.canvasContext) {
-                                const ctx = renderCtx.canvasContext;
-                                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 600, 800);
-                                ctx.fillStyle = '#0f172a'; ctx.font = '16px sans-serif';
-                                ctx.fillText('PDF Document Page ' + pageNum, 40, 60);
-                            }
-                        } catch (e) {}
+                        try { if (renderCtx && renderCtx.canvasContext) {
+                            const ctx = renderCtx.canvasContext; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 600, 800);
+                            ctx.fillStyle = '#0f172a'; ctx.font = '16px sans-serif'; ctx.fillText('PDF Document Page ' + pageNum, 40, 60);
+                        } } catch (e) {}
                         return { promise: Promise.resolve() };
                     },
                     getTextContent: function() { return Promise.resolve({ items: [] }); }
@@ -115,10 +120,11 @@ PDF_JS_SHIM = """(function(window) {
 
 
 class PredictionServiceError(Exception):
-    """Base structured exception for prediction HTTP error translation."""
-    status_code: int = 500
-    error_code: str = "internal_error"
-    public_message: str = "An unexpected error occurred while processing the prediction request."
+    """Base structured error raised by the prediction and persistence service."""
+
+    status_code = 500
+    error_code = "internal_error"
+    public_message = "An unexpected error occurred while processing the prediction request."
 
     def __init__(self, public_message: str | None = None, *, internal_detail: str | None = None) -> None:
         super().__init__(internal_detail or public_message or self.public_message)
@@ -128,48 +134,51 @@ class PredictionServiceError(Exception):
 
 
 class InvalidPredictionRequestError(PredictionServiceError):
-    status_code, error_code, public_message = 400, "invalid_request", "Invalid prediction request payload."
+    status_code = 400
+    error_code = "invalid_request"
+    public_message = "Invalid prediction request payload."
 
 
 class UnauthorizedPredictionRequestError(PredictionServiceError):
-    status_code, error_code = 401, "unauthorized"
+    status_code = 401
+    error_code = "unauthorized"
     public_message = "Unauthorized: prediction endpoint is restricted to the Lumen Bookkeeping application."
 
 
 class ForbiddenOriginPredictionError(PredictionServiceError):
-    status_code, error_code = 403, "forbidden_origin"
+    status_code = 403
+    error_code = "forbidden_origin"
     public_message = "Forbidden: request origin is not authorized to access this service."
 
 
 class PayloadTooLargeError(PredictionServiceError):
-    status_code, error_code, public_message = 413, "payload_too_large", "Request payload exceeds the maximum allowed size."
+    status_code = 413
+    error_code = "payload_too_large"
+    public_message = "Request payload exceeds the maximum allowed size."
 
 
 class PredictionTimeoutError(PredictionServiceError):
-    status_code, error_code, public_message = 504, "prediction_timeout", "AI prediction timed out."
+    status_code = 504
+    error_code = "prediction_timeout"
+    public_message = "AI prediction timed out."
 
 
 class UpstreamPredictionError(PredictionServiceError):
-    status_code, error_code, public_message = 502, "upstream_prediction_error", "AI prediction engine failed to process the request."
+    status_code = 502
+    error_code = "upstream_prediction_error"
+    public_message = "AI prediction engine failed to process the request."
 
 
 def build_error_envelope(error_code: str, message: str) -> dict:
-    """Return a consistent JSON error envelope that preserves the `text` fallback for `script.js`."""
+    """Return a Flowise-compatible JSON error envelope."""
     return {"error": {"code": error_code, "message": message}, "text": "```json\n{}\n```"}
 
 
 def _sanitize_filename(name: str, index: int, mime: str) -> str:
-    """Return a collision-safe, traversal-proof filename prefixed with the upload index."""
-    base_raw = os.path.basename(name or "")
-    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", base_raw).lstrip(".-_")
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(name or "")).lstrip(".-_")
     mime_lower = (mime or "").lower()
     if not cleaned or cleaned in (".", ".."):
-        if "pdf" in mime_lower:
-            ext = ".pdf"
-        elif "jpeg" in mime_lower or "jpg" in mime_lower:
-            ext = ".jpg"
-        else:
-            ext = ".png"
+        ext = ".pdf" if "pdf" in mime_lower else (".jpg" if ("jpeg" in mime_lower or "jpg" in mime_lower) else ".png")
         cleaned = f"document_{index}{ext}"
     elif "pdf" in mime_lower and not cleaned.lower().endswith(".pdf"):
         cleaned = f"{cleaned}.pdf"
@@ -177,13 +186,12 @@ def _sanitize_filename(name: str, index: int, mime: str) -> str:
 
 
 def _parse_multipart_form_data(content_type: str, body: bytes) -> tuple[str, list[dict]]:
-    """Extract `question` and any file uploads from a `multipart/form-data` request body."""
     raw_headers = f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8")
     msg = BytesParser(policy=default_email_policy).parsebytes(raw_headers + body)
-    question = ""
-    uploads: list[dict] = []
     if not msg.is_multipart():
         raise InvalidPredictionRequestError("Malformed multipart/form-data payload.")
+    question = ""
+    uploads: list[dict] = []
     for part in msg.iter_parts():
         if part.get_content_disposition() != "form-data":
             continue
@@ -200,29 +208,17 @@ def _parse_multipart_form_data(content_type: str, body: bytes) -> tuple[str, lis
 
 
 def _parse_json_prediction_request(body: bytes) -> tuple[str, list[dict]]:
-    """Validate and extract `question` and `uploads` from a JSON request body."""
-    try:
-        decoded = body.decode("utf-8") if body else "{}"
-        payload = json.loads(decoded or "{}")
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise InvalidPredictionRequestError("Request body must be valid UTF-8 JSON.", internal_detail=str(exc)) from exc
-    if not isinstance(payload, dict):
-        raise InvalidPredictionRequestError("JSON request payload must be an object.")
-    raw_question = payload.get("question", "")
-    if raw_question is None:
-        raw_question = ""
+    payload = _parse_json_object(body)
+    raw_question = "" if payload.get("question") is None else payload.get("question", "")
     if not isinstance(raw_question, str):
         raise InvalidPredictionRequestError("Field 'question' must be a string.")
-    raw_uploads = payload.get("uploads", [])
-    if raw_uploads is None:
-        raw_uploads = []
+    raw_uploads = [] if payload.get("uploads") is None else payload.get("uploads", [])
     if not isinstance(raw_uploads, list) or any(not isinstance(u, dict) for u in raw_uploads):
         raise InvalidPredictionRequestError("Field 'uploads' must be a list of objects.")
     return raw_question, raw_uploads
 
 
 def _write_uploads_to_dir(uploads: list[dict], target_dir: Path) -> list[Path]:
-    """Decode base64 data URLs from `uploads` into `target_dir` and return their resolved paths."""
     resolved_target_dir = target_dir.resolve()
     saved_paths: list[Path] = []
     for idx, item in enumerate(uploads):
@@ -233,17 +229,13 @@ def _write_uploads_to_dir(uploads: list[dict], target_dir: Path) -> list[Path]:
             raise InvalidPredictionRequestError("Upload 'data' field must be a base64 string.")
         if not data_val:
             continue
-        mime = str(item.get("mime") or "image/jpeg")
         raw_name = item.get("name")
-        safe_name = _sanitize_filename(raw_name if isinstance(raw_name, str) else "", idx, mime)
+        safe_name = _sanitize_filename(raw_name if isinstance(raw_name, str) else "", idx, str(item.get("mime") or "image/jpeg"))
         b64_payload = data_val.split(",", 1)[1] if ("," in data_val and data_val.startswith("data:")) else data_val
         try:
             file_bytes = base64.b64decode(b64_payload, validate=True)
         except (binascii.Error, ValueError) as exc:
-            raise InvalidPredictionRequestError(
-                f"Invalid base64 encoding in upload at index {idx}.",
-                internal_detail=str(exc),
-            ) from exc
+            raise InvalidPredictionRequestError(f"Invalid base64 encoding in upload at index {idx}.", internal_detail=str(exc)) from exc
         file_path = (resolved_target_dir / safe_name).resolve()
         if not file_path.is_relative_to(resolved_target_dir) or file_path == resolved_target_dir:
             raise InvalidPredictionRequestError("Invalid upload filename.")
@@ -254,9 +246,7 @@ def _write_uploads_to_dir(uploads: list[dict], target_dir: Path) -> list[Path]:
 
 def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
     """Execute `agy` non-interactively using the same CLI flags as Argiei worker instances."""
-    base_tmp = Path(tempfile.gettempdir()) / "agy_requests"
-    base_tmp.mkdir(parents=True, exist_ok=True)
-    req_dir = (base_tmp / f"req_{uuid.uuid4().hex[:12]}").resolve()
+    req_dir = (Path(tempfile.gettempdir()) / "agy_requests" / f"req_{uuid.uuid4().hex[:12]}").resolve()
     req_dir.mkdir(parents=True, exist_ok=True)
     try:
         saved_files = _write_uploads_to_dir(uploads, req_dir)
@@ -268,47 +258,32 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
                 "CRITICAL RULES:\n"
                 "- Use ONLY the `read_file` tool. Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
                 "- Extract all values directly from the document content returned by `read_file`.\n"
-                "- Ensure every line item `amount` and `unitPrice` is the pre-tax net amount (excluding VAT/tax), "
-                "and `subtotal` is the sum of pre-tax line item amounts so that `subtotal - discount + tax = total`.\n"
-                "- Respond ONLY with the requested ```json ... ``` code block (no extra prose):\n\n"
-                f"{question}"
+                "- Ensure every line item `amount` and `unitPrice` is the pre-tax net amount (excluding VAT/tax), and `subtotal` is the sum of pre-tax line item amounts so that `subtotal - discount + tax = total`.\n"
+                f"- Respond ONLY with the requested ```json ... ``` code block (no extra prose):\n\n{question}"
             )
         elif "json" in question.lower() or "extract" in question.lower() or "bank statement" in question.lower():
             full_prompt = (
                 "You are an accounting document extraction engine.\n"
-                "CRITICAL RULES:\n"
-                "- Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
-                "- Fulfill the extraction instructions below and respond ONLY with the requested "
-                "```json ... ``` code block (no extra prose):\n\n"
-                f"{question}"
+                "CRITICAL RULES:\n- Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
+                f"- Fulfill the extraction instructions below and respond ONLY with the requested ```json ... ``` code block (no extra prose):\n\n{question}"
             )
         else:
             full_prompt = (
-                "CRITICAL RULES:\n"
-                "- Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
-                "- Respond directly and helpfully to the user prompt below:\n\n"
-                f"{question}"
+                "CRITICAL RULES:\n- Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
+                f"- Respond directly and helpfully to the user prompt below:\n\n{question}"
             )
         cmd = [
             "agy", "--mode", "accept-edits", "--dangerously-skip-permissions",
-            "--disable-slash-commands", "--output-format", "json",
-            "--model", AGY_MODEL, "--print-timeout", AGY_TIMEOUT,
-            "--add-dir", str(req_dir), "--print", full_prompt,
+            "--disable-slash-commands", "--output-format", "json", "--model", AGY_MODEL,
+            "--print-timeout", AGY_TIMEOUT, "--add-dir", str(req_dir), "--print", full_prompt,
         ]
         try:
-            proc = subprocess.run(
-                cmd, cwd=str(req_dir), capture_output=True, text=True,
-                timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False,
-            )
+            proc = subprocess.run(cmd, cwd=str(req_dir), capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False)
         except subprocess.TimeoutExpired as exc:
-            raise PredictionTimeoutError(
-                "AI prediction timed out.",
-                internal_detail=f"agy subprocess timed out after {SUBPROCESS_TIMEOUT_SECONDS}s",
-            ) from exc
+            raise PredictionTimeoutError("AI prediction timed out.", internal_detail=f"agy subprocess timed out after {SUBPROCESS_TIMEOUT_SECONDS}s") from exc
 
-        stdout = (proc.stdout or "").strip()
-        stderr = (proc.stderr or "").strip()
-        parsed_json: dict | None = None
+        stdout, stderr = (proc.stdout or "").strip(), (proc.stderr or "").strip()
+        parsed_json = None
         for line in reversed(stdout.splitlines()):
             line = line.strip()
             if line.startswith("{") and line.endswith("}"):
@@ -320,11 +295,9 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
                 except json.JSONDecodeError:
                     continue
         if parsed_json is not None:
-            response_text = str(parsed_json.get("response") or "")
-            conv_id = str(parsed_json.get("conversation_id") or "")
-            status = str(parsed_json.get("status") or "SUCCESS")
+            conv_id, status = str(parsed_json.get("conversation_id") or ""), str(parsed_json.get("status") or "SUCCESS")
             print(f"[agy] Completed conversation_id={conv_id} status={status}", flush=True)
-            return {"text": response_text, "conversation_id": conv_id, "status": status}
+            return {"text": str(parsed_json.get("response") or ""), "conversation_id": conv_id, "status": status}
         if proc.returncode != 0:
             raise UpstreamPredictionError(
                 "AI prediction engine failed to process the request.",
@@ -336,8 +309,7 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
 
 
 def _validate_content_length(header_val: str | None) -> int:
-    """Validate and return the integer Content-Length within MAX_REQUEST_BYTES."""
-    if header_val is None or header_val == "":
+    if not header_val:
         return 0
     try:
         length = int(header_val)
@@ -351,7 +323,6 @@ def _validate_content_length(header_val: str | None) -> int:
 
 
 def _get_header_case_insensitive(headers: Mapping[str, str], name: str) -> str:
-    """Read a header value case-insensitively from an HTTPMessage or dict."""
     direct = headers.get(name)
     if direct is not None:
         return str(direct).strip()
@@ -363,38 +334,29 @@ def _get_header_case_insensitive(headers: Mapping[str, str], name: str) -> str:
 
 
 def _extract_origin_from_url(url_or_origin: str) -> str:
-    """Normalize an Origin or Referer URL into `scheme://netloc`."""
     cleaned = (url_or_origin or "").strip().rstrip("/")
-    if not cleaned:
-        return ""
-    parsed = urlparse(cleaned)
-    if not parsed.scheme or not parsed.netloc:
-        return ""
-    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+    parsed = urlparse(cleaned) if cleaned else None
+    if parsed and parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+    return ""
 
 
 def _is_allowed_origin(origin: str | None) -> bool:
-    """Return True only if `origin` matches our trusted Lumen Bookkeeping application origins."""
     normalized = _extract_origin_from_url(origin or "")
     if not normalized:
         return False
     if normalized in {item.lower() for item in ALLOWED_ORIGINS}:
         return True
-    if re.match(r"^https://[a-z0-9-]+\.lumen-bookkeeping\.pages\.dev$", normalized):
-        return True
-    if re.match(r"^http://(localhost|127\.0\.0\.1|bookkeeping-web)(:\d+)?$", normalized):
-        return True
-    return False
+    return bool(
+        re.match(r"^https://[a-z0-9-]+\.lumen-bookkeeping\.pages\.dev$", normalized)
+        or re.match(r"^http://(localhost|127\.0\.0\.1|bookkeeping-web)(:\d+)?$", normalized)
+    )
 
 
 def _verify_prediction_request_security(headers: Mapping[str, str]) -> str | None:
-    """Enforce proxy secret, `X-Lumen-Client` handshake, and Origin/Referer allowlist on `/api/*`."""
     if AGY_API_SECRET:
         provided_secret = _get_header_case_insensitive(headers, "X-Agy-Proxy-Secret")
-        if not provided_secret or not hmac.compare_digest(
-            provided_secret.encode("utf-8"),
-            AGY_API_SECRET.encode("utf-8"),
-        ):
+        if not provided_secret or not hmac.compare_digest(provided_secret.encode("utf-8"), AGY_API_SECRET.encode("utf-8")):
             raise UnauthorizedPredictionRequestError(
                 "Unauthorized: valid proxy authentication secret is required.",
                 internal_detail="Missing or invalid X-Agy-Proxy-Secret header",
@@ -423,8 +385,63 @@ def _verify_prediction_request_security(headers: Mapping[str, str]) -> str | Non
     return None
 
 
+def _resolve_default_state_db_path() -> Path:
+    return resolve_default_state_db_path(os.environ.get("LUMEN_STATE_DB_PATH", "").strip())
+
+
+STATE_REPO: LumenStateRepository | None = None
+
+
+def get_state_repo() -> LumenStateRepository:
+    """Return the active `LumenStateRepository`, initializing it lazily on first access."""
+    global STATE_REPO
+    if STATE_REPO is None:
+        STATE_REPO = LumenStateRepository(_resolve_default_state_db_path(), session_secret=AGY_API_SECRET or None)
+    return STATE_REPO
+
+
+def _resolve_caller_account(headers: Mapping[str, str], repo: LumenStateRepository) -> str:
+    return repo.resolve_caller_from_headers(
+        cf_email=_get_header_case_insensitive(headers, "Cf-Access-Authenticated-User-Email"),
+        account_header=_get_header_case_insensitive(headers, "X-Lumen-Account"),
+        session_header=_get_header_case_insensitive(headers, "X-Lumen-Session"),
+    )
+
+
+def _parse_json_object(body: bytes) -> dict:
+    try:
+        payload = json.loads((body.decode("utf-8") if body else "{}") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise InvalidPredictionRequestError("Request body must be valid UTF-8 JSON.", internal_detail=str(exc)) from exc
+    if not isinstance(payload, dict):
+        raise InvalidPredictionRequestError("JSON request payload must be an object.")
+    return payload
+
+
+def _handle_state_post(body: bytes, repo: LumenStateRepository, caller_account: str | None = None) -> dict:
+    payload = _parse_json_object(body)
+    set_map, remove_list = payload.get("set") or {}, payload.get("remove") or []
+    if not isinstance(set_map, dict) or not isinstance(remove_list, list):
+        raise InvalidPredictionRequestError("Fields 'set' (object) and 'remove' (list) must have valid types.")
+    updated = repo.mutate_scoped_state(caller_account, set_map, [str(k) for k in remove_list], clear_all=bool(payload.get("clear_all")))
+    return {"status": "ok", "updated": updated}
+
+
+def _handle_attachments_post(body: bytes, repo: LumenStateRepository, caller_account: str | None = "owner") -> dict:
+    payload = _parse_json_object(body)
+    items: dict[str, str] = {}
+    if isinstance(payload.get("attachments"), dict):
+        items.update({str(k): str(v) for k, v in payload["attachments"].items() if v is not None})
+    if isinstance(payload.get("key"), str) and isinstance(payload.get("data"), str):
+        items[payload["key"]] = payload["data"]
+    remove_list = payload.get("remove") or []
+    if not isinstance(remove_list, list):
+        raise InvalidPredictionRequestError("Field 'remove' must be a list.")
+    return {"status": "ok", "updated": repo.put_attachments(items, [str(k) for k in remove_list], account_id=caller_account)}
+
+
 class AgyPredictionHandler(BaseHTTPRequestHandler):
-    """HTTP request handler exposing Flowise-compatible `/api/v1/prediction/*` endpoints."""
+    """HTTP request handler exposing Flowise-compatible `/api/v1/prediction/*`, auth, and persistence endpoints."""
 
     def _send_json(self, payload: dict, status: int = 200) -> None:
         raw = json.dumps(payload).encode("utf-8")
@@ -435,10 +452,7 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
         if req_origin and _is_allowed_origin(req_origin):
             self.send_header("Access-Control-Allow-Origin", req_origin)
             self.send_header("Vary", "Origin")
-        self.send_header(
-            "Access-Control-Allow-Headers",
-            "Content-Type, Authorization, X-Lumen-Client, X-Agy-Proxy-Secret",
-        )
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Lumen-Client, X-Lumen-Account, X-Lumen-Session, X-Agy-Proxy-Secret")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         self.wfile.write(raw)
@@ -446,14 +460,7 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:  # noqa: N802
         raw_origin = self.headers.get("Origin", "")
         if raw_origin and not _is_allowed_origin(raw_origin):
-            self._send_json(
-                build_error_envelope(
-                    "forbidden_origin",
-                    "Forbidden: request origin is not authorized to access this service.",
-                ),
-                status=403,
-            )
-            return
+            return self._send_json(build_error_envelope("forbidden_origin", "Forbidden: request origin is not authorized to access this service."), status=403)
         self._send_json({"status": "ok"}, status=200)
 
     def _send_bytes(self, raw: bytes, content_type: str, status: int = 200) -> None:
@@ -467,47 +474,57 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/__vendor__/chart.js":
-            self._send_bytes(CHART_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
-            return
+            return self._send_bytes(CHART_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
         if parsed.path in ("/__vendor__/pdf.min.js", "/__vendor__/pdf.worker.min.js"):
-            self._send_bytes(PDF_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
-            return
+            return self._send_bytes(PDF_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
         if parsed.path == "/__vendor__/fonts.css":
-            self._send_bytes(b"/* local font shim */\n", "text/css; charset=utf-8")
-            return
+            return self._send_bytes(b"/* local font shim */\n", "text/css; charset=utf-8")
         if parsed.path in ("/", "/health", "/api/v1/ping"):
-            self._send_json({"status": "ok", "engine": "agy", "model": AGY_MODEL}, status=200)
+            return self._send_json({"status": "ok", "engine": "agy", "model": AGY_MODEL}, status=200)
+        if parsed.path in ("/api/v1/state", "/api/v1/attachments", "/api/v1/auth/session"):
+            try:
+                _verify_prediction_request_security(self.headers)
+                repo = get_state_repo()
+                if parsed.path == "/api/v1/auth/session":
+                    self._send_json(repo.resolve_session(cf_email=_get_header_case_insensitive(self.headers, "Cf-Access-Authenticated-User-Email"), account_header=_get_header_case_insensitive(self.headers, "X-Lumen-Account"), session_header=_get_header_case_insensitive(self.headers, "X-Lumen-Session")), status=200)
+                elif parsed.path == "/api/v1/state":
+                    caller_acc = _resolve_caller_account(self.headers, repo)
+                    self._send_json({"status": "ok", "state": repo.get_scoped_state(caller_acc)}, status=200)
+                else:
+                    caller_acc = _resolve_caller_account(self.headers, repo)
+                    key = (parse_qs(parsed.query).get("key") or [""])[0]
+                    self._send_json({"status": "ok", "key": key, "data": repo.get_attachment(key, account_id=caller_acc)}, status=200)
+            except PredictionServiceError as exc:
+                self._send_json(build_error_envelope(exc.error_code, exc.public_message), status=exc.status_code)
             return
         self._send_json(build_error_envelope("not_found", "Endpoint not found."), status=404)
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if not parsed.path.startswith("/api/"):
-            self._send_json(build_error_envelope("not_found", "Endpoint not found."), status=404)
-            return
+            return self._send_json(build_error_envelope("not_found", "Endpoint not found."), status=404)
         try:
             _verify_prediction_request_security(self.headers)
             content_len = _validate_content_length(self.headers.get("Content-Length"))
             body = self.rfile.read(content_len) if content_len > 0 else b""
+            repo = get_state_repo()
+            if parsed.path == "/api/v1/auth/login":
+                payload = _parse_json_object(body)
+                return self._send_json(repo.verify_login(str(payload.get("email") or ""), str(payload.get("password") or "")), status=200)
+            caller_acc = _resolve_caller_account(self.headers, repo)
+            if parsed.path == "/api/v1/state":
+                return self._send_json(_handle_state_post(body, repo, caller_acc), status=200)
+            if parsed.path == "/api/v1/attachments":
+                return self._send_json(_handle_attachments_post(body, repo, caller_acc), status=200)
             content_type = self.headers.get("Content-Type", "")
-            if "multipart/form-data" in content_type:
-                question, uploads = _parse_multipart_form_data(content_type, body)
-            else:
-                question, uploads = _parse_json_prediction_request(body)
-            result = run_agy_prediction(question=question, uploads=uploads)
-            self._send_json(result, status=200)
+            question, uploads = _parse_multipart_form_data(content_type, body) if "multipart/form-data" in content_type else _parse_json_prediction_request(body)
+            self._send_json(run_agy_prediction(question=question, uploads=uploads), status=200)
         except PredictionServiceError as exc:
             print(f"[agy-error] {exc.error_code}: {exc.internal_detail}", file=sys.stderr, flush=True)
             self._send_json(build_error_envelope(exc.error_code, exc.public_message), status=exc.status_code)
         except Exception as exc:  # noqa: BLE001
             print(f"[agy-error] unexpected: {exc!r}", file=sys.stderr, flush=True)
-            self._send_json(
-                build_error_envelope(
-                    "internal_error",
-                    "An unexpected error occurred while processing the prediction request.",
-                ),
-                status=500,
-            )
+            self._send_json(build_error_envelope("internal_error", "An unexpected error occurred while processing the prediction request."), status=500)
 
 
 def main() -> None:

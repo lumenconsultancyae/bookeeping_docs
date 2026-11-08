@@ -226,6 +226,23 @@ def step_verify_admin_upgrade_approved(context) -> None:
     )
 
 
+@when("the administrator opens the customer books for the registered company from the Super-Admin Console")
+def step_admin_opens_customer_books(context) -> None:
+    context.expenses_admin_page.open_books_for_company_in_admin(
+        context.registered_company_name
+    )
+
+
+@then("physical localStorage should contain only UI configuration keys")
+def step_verify_local_config_isolation(context) -> None:
+    keys = context.expenses_admin_page.get_physical_local_storage_keys()
+    allowed = {"lumen_lang", "lumen_sidebar_collapsed", "probe"}
+    for key in keys:
+        assert key in allowed or str(key).startswith("lumen_table_page_size:"), (
+            f"Unexpected non-config key '{key}' found in physical window.localStorage: {keys}"
+        )
+
+
 # --- WhatsApp-First Workflows & Camera Receipt OCR ---
 
 

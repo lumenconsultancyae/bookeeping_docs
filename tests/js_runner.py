@@ -117,6 +117,30 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
         }
     };
     const vmMod = {
+        createContext: (sandbox) => sandbox || {},
+        runInContext: (code, sandbox) => {
+            const ctx = sandbox || {};
+            let rewritten = String(code);
+            if (!rewritten.trimStart().startsWith('(function')) {
+                const declRe = /(?:^|\n)(?:    )?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g;
+                let m;
+                while ((m = declRe.exec(rewritten)) !== null) {
+                    if (!(m[1] in ctx)) ctx[m[1]] = undefined;
+                }
+                rewritten = rewritten.replace(/(^|\n)(    )?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g, '$1$2$3 =');
+                const fnRe = /(?:^|\n)(?:    )?function\s+([A-Za-z_$][\w$]*)\s*\(/g;
+                const fnNames = [];
+                while ((m = fnRe.exec(rewritten)) !== null) {
+                    if (!(m[1] in ctx)) ctx[m[1]] = undefined;
+                    fnNames.push(m[1]);
+                }
+                if (fnNames.length) {
+                    rewritten += '\n;' + fnNames.map(n => `__ctx.${n} = ${n};`).join(' ');
+                }
+            }
+            const fn = new Function('__ctx', `with (__ctx) {\n${rewritten}\n}`);
+            return fn(ctx);
+        },
         runInNewContext: (code, sandbox) => {
             const keys = Object.keys(sandbox);
             const vals = keys.map(k => sandbox[k]);

@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -fsSL https://antigravity.google/cli/install.sh | bash
 
 WORKDIR /app
-COPY agy_service.py /app/agy_service.py
+COPY migrations /app/migrations
+COPY state_repository.py agy_service.py /app/
 
 EXPOSE 3000
 
