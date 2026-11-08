@@ -22,7 +22,7 @@
     - `AGY_API_SECRET`: 256-bit shared secret verified via constant-time `hmac.compare_digest` between the Cloudflare Pages Function (`functions/api/[[path]].js`) and `agy_service.py` on AWS EC2.
 - **Live Production Target Hosts**:
   - Production Custom Domain (`main` branch): `https://bookeeping.lumenconsultancy.net/` (and alias `https://bookkeeping.lumenconsultancy.net/`, bound via Cloudflare Worker Custom Domain `lumen-bookkeeping-prod`)
-  - Cloudflare Pages Development / Preview Endpoint: `https://lumen-bookkeeping.pages.dev` (Account ID `971b7e8150db81f3cb98b2969c6286b2`)
+  - Cloudflare Pages Development / Preview Endpoint: `https://lumen-bookkeeping.pages.dev` (Account ID `971b7e8150db81f3cb98b2969c6286b2`, bound to Cloudflare D1 database `lumen-bookkeeping-db` as `LUMEN_DB` and Cloudflare R2 bucket `lumen-bookkeeping-attachments` as `LUMEN_ATTACHMENTS`)
   - Cloudflare Zero Trust Tunnel: `bookkeeping-prod` (`8e576b19-114e-40a5-9dd0-5a18074f166b`)
   - AWS EC2 Host (`us-east-1`): `i-09003c32e39617fea` (`ec2-100-59-208-234.compute-1.amazonaws.com` / `100.59.208.234`)
 

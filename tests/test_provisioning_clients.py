@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -77,7 +77,9 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
             self.assertEqual(settings.unwrap_agy_api_secret(), "sec-xyz")
             self.assertIsNone(settings.unwrap_aws_session_token())
 
-            fake_cf = MagicMock()
+            from deploy.infrastructure import AwsEc2Client, CloudflareApiClient
+
+            fake_cf = create_autospec(CloudflareApiClient, instance=True)
             fake_cf.ensure_tunnel.return_value = CloudflareTunnelSpec(
                 tunnel_id="tun-live-1",
                 tunnel_name="bookkeeping-prod",
@@ -85,6 +87,8 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
                 public_hostname="books.lumen.ae",
                 dns_record_id="dns-live-1",
             )
+            fake_cf.ensure_d1_database.return_value = "d1-live-uuid"
+            fake_cf.ensure_r2_bucket.return_value = "lumen-bookkeeping-attachments"
             fake_cf.ensure_pages_project.return_value = CloudflarePagesSpec(
                 project_name="lumen-bookkeeping",
                 pages_url="https://lumen-bookkeeping.pages.dev",
@@ -92,7 +96,7 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
                 github_repo="bookkeeping-tool",
                 production_branch="main",
             )
-            fake_ec2 = MagicMock()
+            fake_ec2 = create_autospec(AwsEc2Client, instance=True)
             fake_ec2.provision_instance.return_value = Ec2InstanceSpec(
                 instance_id="i-live123",
                 public_ip="54.1.2.3",
@@ -109,6 +113,17 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
             self.assertEqual(res.public_url, "https://books.lumen.ae")
             self.assertEqual(res.pages_url, "https://lumen-bookkeeping.pages.dev")
             self.assertIn("54.1.2.3", res.ssh_command)
+            fake_cf.ensure_d1_database.assert_called_once_with(db_name="lumen-bookkeeping-db")
+            fake_cf.ensure_r2_bucket.assert_called_once_with(
+                bucket_name="lumen-bookkeeping-attachments"
+            )
+            fake_cf.ensure_pages_project.assert_called_once_with(
+                project_name="lumen-bookkeeping",
+                backend_url="https://books.lumen.ae",
+                agy_api_secret="sec-xyz",
+                d1_database_id="d1-live-uuid",
+                r2_bucket_name="lumen-bookkeeping-attachments",
+            )
             summary_path = Path(tmp_dir) / "provisioning_result.json"
             self.assertTrue(summary_path.is_file())
 
@@ -316,6 +331,177 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
         self.assertFalse(any(f.startswith("docs/") for f in tracked), "duplicate docs/ must not be tracked in app repo")
         self.assertFalse(any(f.startswith("patch_") for f in tracked), "patch_*.py scratch scripts must not be tracked")
         self.assertFalse(any(f.startswith("test_") for f in tracked), "scratch test_* files must not be tracked in app repo")
+
+    def test_cloudflare_d1_and_r2_provisioning_and_server_tenant_isolation(self) -> None:
+        import agy_service
+        from deploy.domain import ProvisioningError
+        from deploy.infrastructure import CloudflareApiClient
+
+        cf_responses = [
+            {"success": True, "result": []},
+            {"success": True, "result": {"uuid": "d1-uuid-777", "name": "lumen-bookkeeping-db"}},
+            {"success": True, "result": [{"uuid": "d1-existing-888", "name": "lumen-bookkeeping-db"}]},
+            {"success": True, "result": []},
+            {"success": True, "result": {"name": "lumen-bookkeeping-db"}},
+            {"success": True, "result": {"buckets": []}},
+            {"success": True, "result": {"name": "lumen-bookkeeping-attachments"}},
+            {"success": True, "result": {"buckets": [{"name": "lumen-bookkeeping-attachments"}]}},
+            {"success": True, "result": []},
+            {"success": True, "result": {"name": "lumen-bookkeeping", "subdomain": "lumen-bookkeeping.pages.dev"}},
+        ]
+        call_log: list[tuple[str, str, dict | None]] = []
+
+        def fake_cf_transport(method: str, url: str, body: dict | None = None) -> dict:
+            call_log.append((method, url, body))
+            return cf_responses.pop(0)
+
+        cf_client = CloudflareApiClient(account_id="acc", api_token="tok", transport=fake_cf_transport)
+        d1_id = cf_client.ensure_d1_database(db_name="lumen-bookkeeping-db")
+        self.assertEqual(d1_id, "d1-uuid-777")
+        self.assertEqual(cf_client.ensure_d1_database(db_name="lumen-bookkeeping-db"), "d1-existing-888")
+        with self.assertRaises(ProvisioningError):
+            cf_client.ensure_d1_database(db_name="lumen-bookkeeping-db")
+        r2_name = cf_client.ensure_r2_bucket(bucket_name="lumen-bookkeeping-attachments")
+        self.assertEqual(r2_name, "lumen-bookkeeping-attachments")
+        self.assertEqual(
+            cf_client.ensure_r2_bucket(bucket_name="lumen-bookkeeping-attachments"),
+            "lumen-bookkeeping-attachments",
+        )
+        pages_spec = cf_client.ensure_pages_project(
+            project_name="lumen-bookkeeping",
+            backend_url="https://books.lumen.ae",
+            agy_api_secret="sec-123",
+            d1_database_id=d1_id,
+            r2_bucket_name=r2_name,
+        )
+        self.assertEqual(pages_spec.project_name, "lumen-bookkeeping")
+        pages_post = [c for c in call_log if c[0] == "POST" and c[1].endswith("/pages/projects")][0]
+        prod_cfg = pages_post[2]["deployment_configs"]["production"]
+        self.assertEqual(prod_cfg["d1_databases"]["LUMEN_DB"]["id"], "d1-uuid-777")
+        self.assertEqual(prod_cfg["r2_buckets"]["LUMEN_ATTACHMENTS"]["name"], "lumen-bookkeeping-attachments")
+
+        # Verify backend LumenStateRepository enforces strict tenant scoping and server-side PBKDF2 auth
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = agy_service.LumenStateRepository(Path(tmp) / "tenant_iso.sqlite3")
+            repo.mutate_state({
+                "lumen_accounts": json.dumps({
+                    "acc-1": {"email": "t1@co.ae", "companyName": "Tenant 1", "plan": "basic", "salt": "0102030405060708090a0b0c0d0e0f10", "passwordHash": "secret-hash-1"},
+                    "acc-2": {"email": "t2@co.ae", "companyName": "Tenant 2", "plan": "premium", "salt": "1112131415161718191a1b1c1d1e1f20", "passwordHash": "secret-hash-2"},
+                }),
+                "lumen_profiles": json.dumps([
+                    {"id": "p1", "name": "Tenant 1", "accountId": "acc-1"},
+                    {"id": "p2", "name": "Tenant 2", "accountId": "acc-2"},
+                ]),
+                "profile:p1::bookkeeping_history_v2": '[{"id":"inv-1"}]',
+                "profile:p2::bookkeeping_history_v2": '[{"id":"inv-2"}]',
+                "lumen_admin_credentials": '{"salt":"s","passwordHash":"h"}',
+            })
+            # Owner GET /api/v1/state must strip lumen_admin_credentials and account passwordHash/salt
+            scoped_owner = repo.get_scoped_state("owner")
+            self.assertNotIn("lumen_admin_credentials", scoped_owner)
+            owner_accounts = json.loads(scoped_owner["lumen_accounts"])
+            self.assertNotIn("passwordHash", owner_accounts["acc-1"])
+            self.assertNotIn("salt", owner_accounts["acc-1"])
+
+            # Unauthenticated GET /api/v1/state returns only public email/status directory
+            scoped_unauth = repo.get_scoped_state(None)
+            self.assertEqual(scoped_unauth["lumen_profiles"], "[]")
+            self.assertNotIn("profile:p1::bookkeeping_history_v2", scoped_unauth)
+            self.assertNotIn("lumen_admin_credentials", scoped_unauth)
+
+            # Unauthenticated POST /api/v1/state must be rejected (0 updates)
+            self.assertEqual(
+                repo.mutate_scoped_state(None, {"profile:p1::bookkeeping_history_v2": '[{"id":"hack"}]'}),
+                0,
+            )
+
+            scoped_t1 = repo.get_scoped_state("acc-1")
+            self.assertIn("profile:p1::bookkeeping_history_v2", scoped_t1)
+            self.assertNotIn("profile:p2::bookkeeping_history_v2", scoped_t1)
+            self.assertNotIn("lumen_admin_credentials", scoped_t1)
+            t1_accounts = json.loads(scoped_t1["lumen_accounts"])
+            self.assertIn("acc-1", t1_accounts)
+            self.assertNotIn("acc-2", t1_accounts)
+            self.assertNotIn("passwordHash", t1_accounts["acc-1"])
+
+            # Non-owner tenant cannot overwrite another tenant's profile, hijack profile ID p2, inject acc-evil, or escalate own plan
+            repo.mutate_scoped_state(
+                "acc-1",
+                set_items={
+                    "lumen_profiles": json.dumps([
+                        {"id": "p1", "name": "Tenant 1", "accountId": "acc-1"},
+                        {"id": "p2", "name": "Hijacked Tenant 2", "accountId": "acc-1"},
+                    ]),
+                    "profile:p2::bookkeeping_history_v2": '[{"id":"tampered"}]',
+                    "profile:unregistered::bookkeeping_history_v2": '[{"id":"orphan"}]',
+                    "lumen_admin_credentials": '{"tampered":true}',
+                    "lumen_accounts": json.dumps({
+                        "acc-1": {"email": "t1@co.ae", "plan": "premium"},
+                        "acc-evil": {"email": "evil@co.ae", "plan": "premium"},
+                    }),
+                },
+                remove_keys=["profile:p2::bookkeeping_history_v2"],
+                clear_all=True,
+            )
+            full_state = repo.get_all_state()
+            self.assertEqual(full_state["profile:p2::bookkeeping_history_v2"], '[{"id":"inv-2"}]')
+            self.assertNotIn("profile:unregistered::bookkeeping_history_v2", full_state)
+            self.assertEqual(full_state["lumen_admin_credentials"], '{"salt":"s","passwordHash":"h"}')
+            accounts_after = json.loads(full_state["lumen_accounts"])
+            self.assertEqual(accounts_after["acc-1"]["plan"], "basic")
+            self.assertNotIn("acc-evil", accounts_after)
+
+            # New non-owner registration cannot self-assign premium plan without admin approval
+            repo.mutate_scoped_state(
+                "acc-new",
+                set_items={
+                    "lumen_accounts": json.dumps({
+                        "acc-new": {
+                            "email": "new@co.ae",
+                            "plan": "premium",
+                            "salt": "s-new",
+                            "passwordHash": "h-new",
+                        }
+                    }),
+                },
+            )
+            new_acc = json.loads(repo.get_all_state()["lumen_accounts"])["acc-new"]
+            self.assertEqual(new_acc["plan"], "basic")
+            self.assertEqual(new_acc["requestedPlan"], "premium")
+
+            # Owner updating lumen_profiles preserves tenant profiles
+            repo.mutate_scoped_state(
+                "owner",
+                set_items={
+                    "lumen_profiles": json.dumps([
+                        {"id": "default", "name": "Owner Co", "accountId": "owner"}
+                    ])
+                },
+            )
+            profs_after_owner = json.loads(repo.get_all_state()["lumen_profiles"])
+            prof_ids = {p["id"] for p in profs_after_owner}
+            self.assertIn("default", prof_ids)
+            self.assertIn("p1", prof_ids)
+            self.assertIn("p2", prof_ids)
+
+            # Tenant-scoped attachments: acc-1 can write/read p1::att1, but cannot read/overwrite p2::att1
+            self.assertEqual(repo.put_attachments({"p1::att1": "data-p1"}, account_id="acc-1"), 1)
+            self.assertEqual(repo.put_attachments({"p2::att1": "data-p2"}, account_id="acc-2"), 1)
+            self.assertEqual(repo.get_attachment("p1::att1", account_id="acc-1"), "data-p1")
+            self.assertIsNone(repo.get_attachment("p2::att1", account_id="acc-1"))
+            self.assertIsNone(repo.get_attachment("p1::att1", account_id=None))
+            self.assertEqual(repo.put_attachments({"p2::att1": "hacked"}, account_id="acc-1"), 0)
+            self.assertEqual(repo.get_attachment("p2::att1", account_id="owner"), "data-p2")
+
+            # Session token verification rejects forged tokens and cross-account spoofing
+            tok_t1 = repo.issue_session_token("acc-1")
+            self.assertEqual(repo.verify_session_token(tok_t1, "acc-1"), "acc-1")
+            self.assertIsNone(repo.verify_session_token(tok_t1, "acc-2"))
+            self.assertIsNone(repo.verify_session_token("sess.acc-1.bad.forged", "acc-1"))
+            self.assertEqual(
+                repo.resolve_caller_from_headers(account_header="acc-2", session_header=tok_t1),
+                "unauthenticated",
+            )
 
 
 if __name__ == "__main__":

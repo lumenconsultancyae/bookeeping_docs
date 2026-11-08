@@ -200,6 +200,39 @@ class CloudflareApiClient:
             return str(created_rec["id"])
         return None
 
+    def ensure_d1_database(self, *, db_name: str = "lumen-bookkeeping-db") -> str:
+        """Find or create a Cloudflare D1 serverless SQLite database and return its UUID."""
+        existing = self._request("GET", f"/accounts/{self._account_id}/d1/database")
+        items = existing if isinstance(existing, list) else []
+        for item in items:
+            if isinstance(item, dict) and item.get("name") == db_name:
+                db_id = str(item.get("uuid") or item.get("id") or "")
+                if db_id:
+                    return db_id
+        created = self._request("POST", f"/accounts/{self._account_id}/d1/database", {"name": db_name})
+        if isinstance(created, dict):
+            db_id = str(created.get("uuid") or created.get("id") or "")
+            if db_id:
+                return db_id
+        raise ProvisioningError(
+            ProvisioningErrorCode.CLOUDFLARE_API_ERROR,
+            "Cloudflare D1 database creation response did not include a database UUID.",
+        )
+
+    def ensure_r2_bucket(self, *, bucket_name: str = "lumen-bookkeeping-attachments") -> str:
+        """Find or create a Cloudflare R2 object storage bucket for invoice attachments."""
+        existing = self._request("GET", f"/accounts/{self._account_id}/r2/buckets")
+        buckets = (
+            existing.get("buckets")
+            if isinstance(existing, dict) and isinstance(existing.get("buckets"), list)
+            else (existing if isinstance(existing, list) else [])
+        )
+        for b in buckets:
+            if isinstance(b, dict) and b.get("name") == bucket_name:
+                return bucket_name
+        self._request("POST", f"/accounts/{self._account_id}/r2/buckets", {"name": bucket_name})
+        return bucket_name
+
     def ensure_pages_project(
         self,
         *,
@@ -211,6 +244,8 @@ class CloudflareApiClient:
         agy_api_secret: str | None = None,
         custom_domain: str | None = None,
         zone_id: str | None = None,
+        d1_database_id: str | None = None,
+        r2_bucket_name: str | None = None,
     ) -> CloudflarePagesSpec:
         """Create or update a GitHub-connected Cloudflare Pages project that auto-deploys on `git push`."""
         projects = self._request("GET", f"/accounts/{self._account_id}/pages/projects")
@@ -247,20 +282,28 @@ class CloudflareApiClient:
                 "root_dir": "",
             },
         }
+        deploy_cfg_entry: dict[str, object] = {}
         if env_vars:
+            deploy_cfg_entry["env_vars"] = env_vars
+        if d1_database_id:
+            deploy_cfg_entry["d1_databases"] = {"LUMEN_DB": {"id": d1_database_id}}
+        if r2_bucket_name:
+            deploy_cfg_entry["r2_buckets"] = {"LUMEN_ATTACHMENTS": {"name": r2_bucket_name}}
+
+        if deploy_cfg_entry:
             project_payload["deployment_configs"] = {
-                "production": {"env_vars": env_vars},
-                "preview": {"env_vars": env_vars},
+                "production": dict(deploy_cfg_entry),
+                "preview": dict(deploy_cfg_entry),
             }
 
         fallback_payload: dict[str, object] = {
             "name": project_name,
             "production_branch": production_branch,
         }
-        if env_vars:
+        if deploy_cfg_entry:
             fallback_payload["deployment_configs"] = {
-                "production": {"env_vars": env_vars},
-                "preview": {"env_vars": env_vars},
+                "production": dict(deploy_cfg_entry),
+                "preview": dict(deploy_cfg_entry),
             }
 
         if existing_project is None:

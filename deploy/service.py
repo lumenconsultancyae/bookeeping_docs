@@ -86,10 +86,18 @@ class ProvisioningService:
             if tunnel_spec.public_hostname
             else f"http://{instance_spec.public_ip}:9091"
         )
+        d1_database_id = self._cloudflare.ensure_d1_database(
+            db_name=s.cloudflare_d1_database_name,
+        )
+        r2_bucket_name = self._cloudflare.ensure_r2_bucket(
+            bucket_name=s.cloudflare_r2_bucket_name,
+        )
         pages_spec = self._cloudflare.ensure_pages_project(
             project_name=s.cloudflare_pages_project,
             backend_url=public_url,
             agy_api_secret=s.unwrap_agy_api_secret(),
+            d1_database_id=d1_database_id,
+            r2_bucket_name=r2_bucket_name,
         )
         ssh_target = instance_spec.public_ip if instance_spec.public_ip != "pending" else "<EC2_PUBLIC_IP>"
         result = ProvisioningResult(

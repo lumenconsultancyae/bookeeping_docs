@@ -13,13 +13,19 @@ bookeeping_docs/
 ├── docker-compose.prod.yml                          # Production Docker Compose stack for AWS EC2 + Cloudflare Tunnel
 ├── Dockerfile.agy                                   # Production Dockerfile building agy-ai on AWS EC2
 ├── default.conf                                     # Nginx reverse-proxy configuration (/api/ & /__vendor__/)
-├── agy_service.py                                   # HTTP prediction service wrapping the agy CLI
-├── provision.py                                     # AWS EC2 + Cloudflare Tunnel provisioning CLI entrypoint
+├── agy_service.py                                   # HTTP prediction & persistence service wrapping the agy CLI
+├── state_repository.py                              # Multi-tenant SQLite state/attachment repository & PBKDF2-SHA256 auth
+├── migrations/
+│   └── 0001_initial_schema.sql                      # SQLite & Cloudflare D1 DDL for app_state and attachments tables
+├── provision.py                                     # AWS EC2 + Cloudflare Tunnel/D1/R2 provisioning CLI entrypoint
 ├── provision.sh                                     # Shell wrapper reading AWS & Cloudflare env vars
 ├── deploy/                                          # Layered AWS EC2 (SigV4) & Cloudflare API v4 provisioning modules
 │   ├── config.py                                    # Typed environment variable validation & secret masking
 │   ├── domain.py                                    # Domain error codes, specs & cloud-init UserData builder
-│   ├── infrastructure.py                            # Cloudflare API v4 & AWS EC2 Query API (SigV4) adapters
+│   ├── http_utils.py                                # Shared JSON HTTP transport helper
+│   ├── cloudflare_client.py                         # Cloudflare API v4 (Tunnel, DNS, Pages, D1 & R2) adapter
+│   ├── aws_client.py                                # AWS EC2 Query API (SigV4) adapter
+│   ├── infrastructure.py                            # Re-export facade for Cloudflare & AWS EC2 adapters
 │   └── service.py                                   # End-to-end provisioning orchestration service
 ├── tests/                                           # Unit, HTTP integration & behavioral JS test suite
 │   ├── test_agy_service.py                          # Unit & HTTP integration tests for agy_service.py

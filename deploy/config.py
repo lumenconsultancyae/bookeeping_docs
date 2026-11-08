@@ -89,6 +89,8 @@ class ProvisioningSettings:
     _aws_session_token: str | None = field(default=None, repr=False)
     cloudflare_tunnel_name: str = "bookkeeping-prod"
     cloudflare_pages_project: str = "lumen-bookkeeping"
+    cloudflare_d1_database_name: str = "lumen-bookkeeping-db"
+    cloudflare_r2_bucket_name: str = "lumen-bookkeeping-attachments"
     cloudflare_domain: str | None = None
 
     cloudflare_zone_id: str | None = None
@@ -161,6 +163,8 @@ class ProvisioningSettings:
             _aws_session_token=(env.get("AWS_SESSION_TOKEN") or "").strip() or None,
             cloudflare_tunnel_name=(env.get("CLOUDFLARE_TUNNEL_NAME") or "bookkeeping-prod").strip(),
             cloudflare_pages_project=(env.get("CLOUDFLARE_PAGES_PROJECT") or "lumen-bookkeeping").strip(),
+            cloudflare_d1_database_name=(env.get("CLOUDFLARE_D1_DATABASE_NAME") or "lumen-bookkeeping-db").strip(),
+            cloudflare_r2_bucket_name=(env.get("CLOUDFLARE_R2_BUCKET_NAME") or "lumen-bookkeeping-attachments").strip(),
             cloudflare_domain=(env.get("CLOUDFLARE_DOMAIN") or "").strip() or None,
 
             cloudflare_zone_id=(env.get("CLOUDFLARE_ZONE_ID") or "").strip() or None,
