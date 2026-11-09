@@ -4,6 +4,8 @@
 
 Lumen Accounting Suite (Lumen Books) is an all-in-one financial management, bookkeeping, and compliance platform tailored for small and mid-sized businesses operating in the United Arab Emirates. It streamlines daily accounting operations by combining a double-entry general ledger, AI-powered document capture, inventory and fixed-asset tracking, UAE Wage Protection System (WPS) payroll, and automated UAE Value Added Tax (VAT) and Corporate Tax reporting.
 
+- **Customer Pitch Deck & Video Walkthrough**: See [`docs/presentations/CUSTOMER_PITCH_DECK.md`](../presentations/CUSTOMER_PITCH_DECK.md) and [`docs/presentations/lumen_accounting_suite_pitch_and_walkthrough.mp4`](../presentations/lumen_accounting_suite_pitch_and_walkthrough.mp4) for the `1920x1080` visual slide deck and MP4 walkthrough video.
+
 ---
 
 ## Executive Dashboard

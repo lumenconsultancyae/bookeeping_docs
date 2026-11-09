@@ -42,6 +42,10 @@ bookeeping_docs/
 ├── behave.ini                                       # Behave BDD runner configuration
 ├── requirements.txt                                 # Python BDD & Playwright browser dependencies
 ├── docs/
+│   ├── presentations/                               # Customer pitch deck slides (1920x1080 PNGs), slides.json & MP4 walkthrough video
+│   │   ├── CUSTOMER_PITCH_DECK.md                   # Customer pitch deck & visual feature walkthrough guide
+│   │   ├── lumen_accounting_suite_pitch_and_walkthrough.mp4 # 1920x1080 H.264 MP4 customer walkthrough video
+│   │   └── slides.json                              # Declarative specification for regenerating slides & video
 │   ├── UX_STYLE_IMPROVEMENTS.md                     # UI/UX style audit, unified palette & before/after gallery
 │   ├── screenshots/ux_improvements/                 # Initial (before) & next (after) UI state screenshots
 │   ├── product/
@@ -90,6 +94,7 @@ bookeeping_docs/
 
 | Document | Category | Description |
 | :--- | :--- | :--- |
+| [`docs/presentations/CUSTOMER_PITCH_DECK.md`](docs/presentations/CUSTOMER_PITCH_DECK.md) | Customer Pitch & Video | `1920x1080` customer pitch slide deck (`slide_01_*.png` – `slide_07_*.png`), declarative [`slides.json`](docs/presentations/slides.json), and H.264 MP4 walkthrough video ([`lumen_accounting_suite_pitch_and_walkthrough.mp4`](docs/presentations/lumen_accounting_suite_pitch_and_walkthrough.mp4)) for pitching the application to prospective customers. |
 | [`docs/product/user-guide-and-release-notes.md`](docs/product/user-guide-and-release-notes.md) | Customer / Product | End-user workflow guide covering Dashboard, Sales, Credit Notes, Direct Expenses, Procurement, Inventory, Payroll, Tax Filing (VAT 201 & FAF), and Release Notes. |
 | [`docs/product/prd-product-requirements.md`](docs/product/prd-product-requirements.md) | Product | Product Requirements Document detailing target personas, delivered functional capabilities, and target roadmap scope. |
 | [`docs/technical/architecture-and-execution-flow.md`](docs/technical/architecture-and-execution-flow.md) | Engineering | Deep-dive technical documentation covering all 6 runtime phases, double-entry ledger math, multi-tenant online-only cloud storage, trial/auth endpoints, and PINT-AE XML / FAF / SIF schemas. |

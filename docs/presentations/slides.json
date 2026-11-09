@@ -1,0 +1,143 @@
+{
+  "base": "Lumen Accounting Suite",
+  "branch": "Customer Pitch & Release Walkthrough",
+  "slides": [
+    {
+      "slug": "welcome_onboarding_bilingual",
+      "title": "Bilingual (EN / AR RTL) Cloud Onboarding & 1-Month Free Trial Tiers",
+      "subtitle": "Purpose-built UAE SME accounting platform with Basic (AED 50), Advance (AED 75), and Premium (AED 100) plans",
+      "before_title": "English LTR Welcome Portal (/welcome)",
+      "after_title": "Arabic RTL Welcome Portal (dir='rtl')",
+      "before_image": "screenshots/welcome_english_ltr.png",
+      "after_image": "screenshots/welcome_arabic_rtl.png",
+      "before_bullets": [
+        "Transparent UAE pricing tiers (AED 50 / 75 / 100 per month or 10x annual) with 1 Month Free Trial on every plan.",
+        "Built-in UAE PDPL Privacy Policy, Terms of Service, and anytime Cancellation legal modals."
+      ],
+      "after_bullets": [
+        "Instant one-click English (LTR) and Arabic (RTL) switching across /welcome, /admin, and all 26 accounting views.",
+        "Multi-tenant cloud workspace isolation with zero cross-company data leakage."
+      ],
+      "footer": "Lumen Accounting Suite • UAE SME Cloud Bookkeeping, VAT, Corporate Tax & WPS Payroll Platform"
+    },
+    {
+      "slug": "trial_billing_auth_security",
+      "title": "1-Month Trial Card Capture, 3x Lockout, Email Reset & Admin Console",
+      "subtitle": "Tokenized card onboarding, CSPRNG 6-digit password reset, and Super-Admin subscription lifecycle controls",
+      "before_title": "1-Month Free Trial Signup & Card Capture (#setupModal)",
+      "after_title": "3x Password Lockout & Email Reset (#signInModal)",
+      "before_image": "screenshots/after_03_welcome_register_modal.png",
+      "after_image": "screenshots/after_04_welcome_signin_modal.png",
+      "before_bullets": [
+        "Captures cardholder name, card brand, last 4 digits, and expiry token while never storing raw PAN or CVV.",
+        "Locks accounts after 3 failed sign-in attempts and dispatches a CSPRNG 6-digit email reset code."
+      ],
+      "after_bullets": [
+        "Customers can cancel or resume trial auto-renewal anytime in Settings (#btnToggleAutoRenew).",
+        "Super-Admin Console (/admin) tracks MRR, approves plan upgrades, sends renewal reminders, and auto-deducts trial renewals."
+      ],
+      "footer": "Delivered in feat/pdc-reminder-and-sidebar-icons • bookkeeping-tool (8628b4e) & bookeeping_docs (c972831)"
+    },
+    {
+      "slug": "pdc_reminder_card",
+      "title": "Executive Dashboard KPIs & 30-Day Upcoming PDC Cheques Reminder",
+      "subtitle": "Real-time cash flow visibility paired with proactive Post-Dated Cheque clearing alerts (#pdcReminderCard)",
+      "before_title": "main (Before) — #view-dashboard",
+      "after_title": "After — #view-dashboard + #pdcReminderCard",
+      "before_image": "screenshots/before_01_dashboard_reminders.png",
+      "after_image": "screenshots/after_01_dashboard_reminders.png",
+      "before_bullets": [
+        "Displays Total Revenue, Total Expenses, Net Profit, Cash Runway, and 6-month Cash Flow charts across fiscal periods.",
+        "Drill-down Total Expenses Breakdown modal and period-synchronized URL query parameters (?year=&month=)."
+      ],
+      "after_bullets": [
+        "Upcoming PDC Cheques card (#pdcReminderCard) highlights pending cheques clearing within 30 days sorted by urgency.",
+        "Displays Supplier Name, Clearing Date, and formatted AED Amount while excluding cheques > 30 days out."
+      ],
+      "footer": "Delivered in feat/pdc-reminder-and-sidebar-icons • bookkeeping-tool (18da4bc) & bookeeping_docs (8496422)"
+    },
+    {
+      "slug": "collapsed_sidebar_svg_icons",
+      "title": "Cheque Registry & Collapsed Sidebar Semantic SVG Icons (31 Modules)",
+      "subtitle": "XSS-hardened Post-Dated Cheque management and intuitive vector iconography when the navigation sidebar is collapsed",
+      "before_title": "main (Before) — Collapsed 2-Letter Monograms",
+      "after_title": "After — Collapsed 31 Semantic SVG Icons",
+      "before_image": "screenshots/before_02_collapsed_sidebar.png",
+      "after_image": "screenshots/after_02_collapsed_sidebar.png",
+      "before_bullets": [
+        "Registers supplier Post-Dated Cheques with cheque number, clearing date, bank, supplier, and AED amount.",
+        "One-click 'Mark as Cleared' posts balanced double-entry journal vouchers directly into the General Ledger."
+      ],
+      "after_bullets": [
+        "All 31 submenu items render distinct 18x18 inline SVG icons (<SidebarNav />) with accessible hover tooltips.",
+        "Collapsing the sidebar (body.sidebar-collapsed) displays crisp semantic icons instead of legacy 2-letter text monograms."
+      ],
+      "footer": "Delivered in feat/pdc-reminder-and-sidebar-icons • Verified across all 31 submenu routes"
+    },
+    {
+      "slug": "uae_corporate_tax_and_compliance",
+      "title": "Live UAE 9% Corporate Tax Tracker & Regulatory Expiry Reminders",
+      "subtitle": "Automated Federal Decree-Law No. 47 of 2022 tax estimation and proactive Trade License / Visa / Emirates ID alerts",
+      "before_title": "9% UAE Corporate Tax & Small Business Relief",
+      "after_title": "Trade License, Establishment Card & Visa Alerts",
+      "before_image": "screenshots/live_9_uae_corporate_tax_and_small_business_relief_tracker_u.png",
+      "after_image": "screenshots/uae_compliance_reminder_widget_on_the_home_dashboard_alerts_.png",
+      "before_bullets": [
+        "Tracks live utilization of the AED 375,000 0% bracket and calculates 9% Corporate Tax on excess taxable income.",
+        "Evaluates Art. 21 Small Business Relief (<= AED 3,000,000 revenue) and Qualifying Free Zone Person (0% QFZP) status."
+      ],
+      "after_bullets": [
+        "Monitors Trade License and Establishment Card renewal dates alongside Employee Residence Visa and Emirates ID expiries.",
+        "Flags Expired, Urgent (<= 30 days), and Warning (<= 60 days) items directly on the executive dashboard."
+      ],
+      "footer": "Lumen Accounting Suite • Built-In UAE FTA Corporate Tax & MOHRE / ICP Establishment Compliance"
+    },
+    {
+      "slug": "vat201_wps_and_bilingual_invoicing",
+      "title": "FTA VAT 201 Return, MOHRE WPS Payroll & Executive Tax Invoicing",
+      "subtitle": "Emirate-level VAT 201 boxes, FTA Audit File (.csv), PINT-AE e-Invoicing, WPS .SIF & Art. 51 Gratuity",
+      "before_title": "FTA VAT 201 Return (Boxes 1a–1g & Reverse Charge)",
+      "after_title": "Executive A4 Tax Invoice & 1-Tap WhatsApp Share",
+      "before_image": "screenshots/uae_vat_201_emirate_boxes_1a_and_1b_and_box_3_reverse_charge.png",
+      "after_image": "screenshots/arabic_only_invoice_pdf_modal.png",
+      "before_bullets": [
+        "Populates Emirate-level standard-rated supplies (Boxes 1a–1g), Reverse Charge (Box 3), zero-rated/exempt supplies, and Input VAT.",
+        "Exports FTA Audit File (FAF .csv), PINT-AE UBL 2.1 XML e-Invoices, and 10-field MOHRE/CBUAE WPS .SIF salary files."
+      ],
+      "after_bullets": [
+        "Issues FTA Art. 59 Tax Invoices and Art. 60 Credit Notes with single-language EN or AR A4 print isolation.",
+        "1-tap WhatsApp invoice & payment link sharing with +971 phone normalization and statutory Art. 51 EOSB Gratuity."
+      ],
+      "footer": "Lumen Accounting Suite • Complete UAE Tax, E-Invoicing, Payroll & Commercial Workflow Coverage"
+    },
+    {
+      "slug": "ai_ocr_and_playwright_e2e",
+      "title": "AI Multi-Line Document Extraction & Playwright E2E Verification",
+      "subtitle": "Automated PDF/receipt OCR extraction paired with 100% passing unit and Playwright browser test suites",
+      "before_title": "AI Multi-Line Supplier Invoice & TRN Receipt OCR",
+      "after_title": "Playwright Browser Automation & Quality Gate",
+      "before_image": "screenshots/uploading_a_multi_line_pdf_supplier_tax_invoice_extracts_pre.png",
+      "after_diagram": {
+        "caption": "Continuous Verification & Pre-Merge Quality Gate",
+        "nodes": [
+          { "id": "unit", "label": "117 Unit & Security Tests", "sub": "Node VM + Python SQLite/HTTP", "x": 0.24, "y": 0.3, "status": "ok", "badge": "100% PASS" },
+          { "id": "pw", "label": "Playwright Chromium E2E", "sub": "7 Features • 42 Scenarios", "x": 0.76, "y": 0.3, "status": "ok", "badge": "372 STEPS" },
+          { "id": "prod", "label": "Cloudflare Pages + AWS EC2", "sub": "D1 + R2 + Zero Trust Tunnel", "x": 0.5, "y": 0.74, "status": "ok", "badge": "READY" }
+        ],
+        "edges": [
+          { "from": "unit", "to": "prod", "label": "Zero Blockers", "color": "#34d399" },
+          { "from": "pw", "to": "prod", "label": "Zero Console Errors", "color": "#38bdf8" }
+        ]
+      },
+      "before_bullets": [
+        "Extracts vendor name, 15-digit UAE TRN, invoice date, line items, and 5% VAT from PDF bills and camera receipts.",
+        "Populates pre-accounting review tables for one-click double-entry posting into Accounts Payable and Expense ledgers."
+      ],
+      "after_bullets": [
+        "Migrated browser automation and DOM test harnesses from Selenium WebDriver to native Playwright Chromium locators.",
+        "Verified by 117 unit tests and 42 end-to-end BDD scenarios (372 steps) with zero console or page errors."
+      ],
+      "footer": "Delivered in feat/pdc-reminder-and-sidebar-icons • bookeeping_docs (a914efe)"
+    }
+  ]
+}

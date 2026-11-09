@@ -372,7 +372,24 @@ class CloudflareAndAwsProvisioningServiceTests(unittest.TestCase):
 class TestRepositoryFileLineBudget(unittest.TestCase):
     """Guardrail ensuring no tracked or modular file in either repository exceeds 550 lines."""
 
-    BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".woff", ".woff2"}
+    BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".woff", ".woff2", ".mp4", ".webm"}
+
+    def test_customer_pitch_deck_slides_and_video_exist(self) -> None:
+        pres_dir = REPO_ROOT / "docs" / "presentations"
+        for rel in (
+            "CUSTOMER_PITCH_DECK.md",
+            "slides.json",
+            "lumen_accounting_suite_pitch_and_walkthrough.mp4",
+            "slide_01_welcome_onboarding_bilingual.png",
+            "slide_02_trial_billing_auth_security.png",
+            "slide_03_pdc_reminder_card.png",
+            "slide_04_collapsed_sidebar_svg_icons.png",
+            "slide_05_uae_corporate_tax_and_compliance.png",
+            "slide_06_vat201_wps_and_bilingual_invoicing.png",
+            "slide_07_ai_ocr_and_playwright_e2e.png",
+        ):
+            target = pres_dir / rel
+            self.assertTrue(target.is_file() and target.stat().st_size > 0, f"Missing or empty presentation asset: {target}")
 
     def test_all_files_are_at_most_550_lines(self) -> None:
         app_root = REPO_ROOT.parent / "bookkeeping-tool"
