@@ -118,6 +118,49 @@ def step_verify_sign_in_error(context, expected_error: str) -> None:
     )
 
 
+@when("the visitor toggles the sign-in password visibility button and checks Remember me")
+def step_toggle_signin_password_and_remember_me(context) -> None:
+    context.base_page.click_id("btnToggleSignInPassword")
+    context.driver.execute_script(
+        "const cb = document.getElementById('signInRememberMe'); if (cb && !cb.checked) cb.click();"
+    )
+
+
+@then('the sign-in password input type should be "{expected_type}" and Remember me should be checked')
+def step_verify_signin_password_type_and_remember(context, expected_type: str) -> None:
+    state = context.driver.execute_script(
+        "return {"
+        "  type: document.getElementById('signInPassword').type,"
+        "  checked: Boolean(document.getElementById('signInRememberMe').checked),"
+        "  hasEyeSvg: Boolean(document.querySelector('#btnToggleSignInPassword svg.icon-eye-off, #btnToggleSignInPassword svg.icon-eye'))"
+        "};"
+    )
+    assert state["type"] == expected_type and state["checked"] is True and state["hasEyeSvg"] is True, (
+        f"Expected signInPassword type '{expected_type}', Remember me checked, and SVG eye icon present, got {state}"
+    )
+
+
+@when('the visitor resets their locked password via the registered email to "{new_password}"')
+def step_reset_locked_password_via_email(context, new_password: str) -> None:
+    context.base_page.click_id("btnOpenResetFromLock")
+    context.base_page.wait_until(
+        lambda d: d.find_element("id", "resetPasswordModal").is_displayed()
+    )
+    context.base_page.fill_input("resetEmail", context.registered_email)
+    context.base_page.click_id("btnSendResetCode")
+    code = context.base_page.wait_until(
+        lambda d: d.find_element("id", "resetEmailSentNotice").get_attribute("data-reset-code")
+    )
+    assert code and len(code) == 6, f"Expected 6-digit reset code dispatched to email, got '{code}'"
+    context.base_page.fill_input("resetCode", code)
+    context.base_page.fill_input("resetNewPassword", new_password)
+    context.base_page.fill_input("resetConfirmPassword", new_password)
+    context.base_page.click_id("btnResetPasswordSubmit")
+    context.base_page.wait_until(
+        lambda d: d.find_element("id", "signInModal").is_displayed()
+    )
+
+
 @when("the user toggles the topbar language switcher")
 def step_toggle_language_switcher(context) -> None:
     context.created_resources.append(("lang", "en"))

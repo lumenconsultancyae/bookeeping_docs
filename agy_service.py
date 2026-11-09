@@ -359,31 +359,18 @@ def _verify_prediction_request_security(headers: Mapping[str, str]) -> str | Non
     if AGY_API_SECRET:
         provided_secret = _get_header_case_insensitive(headers, "X-Agy-Proxy-Secret")
         if not provided_secret or not hmac.compare_digest(provided_secret.encode("utf-8"), AGY_API_SECRET.encode("utf-8")):
-            raise UnauthorizedPredictionRequestError(
-                "Unauthorized: valid proxy authentication secret is required.",
-                internal_detail="Missing or invalid X-Agy-Proxy-Secret header",
-            )
+            raise UnauthorizedPredictionRequestError("Unauthorized: valid proxy authentication secret is required.", internal_detail="Missing or invalid X-Agy-Proxy-Secret header")
     client_header = _get_header_case_insensitive(headers, "X-Lumen-Client")
     if client_header != REQUIRED_CLIENT_HEADER_VALUE:
-        raise UnauthorizedPredictionRequestError(
-            "Unauthorized: prediction endpoint is restricted to the Lumen Bookkeeping application.",
-            internal_detail=f"Missing or invalid X-Lumen-Client header: {client_header!r}",
-        )
-    raw_origin = _get_header_case_insensitive(headers, "Origin")
-    raw_referer = _get_header_case_insensitive(headers, "Referer")
+        raise UnauthorizedPredictionRequestError("Unauthorized: prediction endpoint is restricted to the Lumen Bookkeeping application.", internal_detail=f"Missing or invalid X-Lumen-Client header: {client_header!r}")
+    raw_origin, raw_referer = _get_header_case_insensitive(headers, "Origin"), _get_header_case_insensitive(headers, "Referer")
     candidate_origin = _extract_origin_from_url(raw_origin) if raw_origin else _extract_origin_from_url(raw_referer)
     if raw_origin or raw_referer:
         if not candidate_origin or not _is_allowed_origin(candidate_origin):
-            raise ForbiddenOriginPredictionError(
-                "Forbidden: request origin is not authorized to access this service.",
-                internal_detail=f"Rejected untrusted origin={raw_origin!r} referer={raw_referer!r}",
-            )
+            raise ForbiddenOriginPredictionError("Forbidden: request origin is not authorized to access this service.", internal_detail=f"Rejected untrusted origin={raw_origin!r} referer={raw_referer!r}")
         return candidate_origin
     if REQUIRE_ORIGIN:
-        raise ForbiddenOriginPredictionError(
-            "Forbidden: request origin header is required.",
-            internal_detail="Missing both Origin and Referer headers while AGY_REQUIRE_ORIGIN is enabled",
-        )
+        raise ForbiddenOriginPredictionError("Forbidden: request origin header is required.", internal_detail="Missing both Origin and Referer headers while AGY_REQUIRE_ORIGIN is enabled")
     return None
 
 
@@ -449,6 +436,7 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
         raw = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.send_header("Content-Length", str(len(raw)))
         req_origin = _extract_origin_from_url(self.headers.get("Origin", ""))
         if req_origin and _is_allowed_origin(req_origin):
@@ -510,10 +498,21 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
             content_len = _validate_content_length(self.headers.get("Content-Length"))
             body = self.rfile.read(content_len) if content_len > 0 else b""
             repo = get_state_repo()
-            if parsed.path == "/api/v1/auth/login":
+            if parsed.path in ("/api/v1/auth/login", "/api/v1/auth/password-reset/request", "/api/v1/auth/reset-request", "/api/v1/auth/password-reset/confirm", "/api/v1/auth/reset-confirm"):
                 payload = _parse_json_object(body)
-                return self._send_json(repo.verify_login(str(payload.get("email") or ""), str(payload.get("password") or "")), status=200)
+                if parsed.path == "/api/v1/auth/login":
+                    res = repo.verify_login(payload.get("email"), payload.get("password"))
+                elif parsed.path.endswith("request"):
+                    res = repo.request_password_reset(payload.get("email"))
+                else:
+                    res = repo.confirm_password_reset(payload.get("email"), payload.get("code"), payload.get("newPassword"))
+                return self._send_json(res, status=int(res.get("status_code") or 200))
             caller_acc = _resolve_caller_account(self.headers, repo)
+            if parsed.path in ("/api/v1/auth/trial-reminder", "/api/v1/auth/trial-renew"):
+                payload = _parse_json_object(body)
+                fn = repo.send_trial_renewal_reminder if parsed.path.endswith("trial-reminder") else repo.process_trial_renewal
+                res = fn(payload.get("email"), caller_account=caller_acc)
+                return self._send_json(res, status=403 if res.get("error") == "Forbidden." else int(res.get("status_code") or 200))
             if parsed.path == "/api/v1/state":
                 return self._send_json(_handle_state_post(body, repo, caller_acc), status=200)
             if parsed.path == "/api/v1/attachments":

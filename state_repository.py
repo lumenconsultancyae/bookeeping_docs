@@ -75,8 +75,8 @@ def verify_password_hash(password: str, salt: str, stored_hash: str) -> bool:
 
 
 def strip_account_secrets(acc: Mapping[str, object]) -> dict[str, object]:
-    """Return a shallow copy of an account dictionary with `passwordHash` and `salt` removed."""
-    return {k: v for k, v in acc.items() if k not in ("passwordHash", "salt")}
+    """Return a shallow copy of an account dictionary with `passwordHash`, `salt`, and `resetCodeHash` removed."""
+    return {k: v for k, v in acc.items() if k not in ("passwordHash", "salt", "resetCodeHash")}
 
 
 def safe_json(raw: str | None, fallback: object) -> object:
@@ -313,14 +313,36 @@ class LumenStateRepository:
                                 if not acc_obj.get(sec_key) and prev.get(sec_key):
                                     nxt[sec_key] = prev[sec_key]
                             if not is_owner:
-                                nxt["plan"] = prev.get("plan", "basic")
-                                nxt["status"] = prev.get("status", "active")
+                                for sec_key in ("passwordHash", "salt"):
+                                    if prev.get(sec_key):
+                                        nxt[sec_key] = prev[sec_key]
+                                for srv_key in (
+                                    "plan", "status", "locked", "failedAttempts", "resetCodeHash", "resetRequestedAt",
+                                    "billingStatus", "lastChargedAmount", "lastChargedAt", "trialStartedAt", "trialEndsAt",
+                                    "renewalReminderSentAt", "renewalReminderMessage",
+                                ):
+                                    if srv_key in prev:
+                                        nxt[srv_key] = prev[srv_key]
+                                    else:
+                                        nxt.pop(srv_key, None)
+                                if isinstance(acc_obj.get("autoRenew"), bool):
+                                    nxt["autoRenew"] = acc_obj["autoRenew"]
+                                    nxt["billingStatus"] = (
+                                        ("active_paid" if prev.get("billingStatus") == "active_paid" or prev.get("lastChargedAt") else "trial")
+                                        if acc_obj["autoRenew"]
+                                        else "canceled_at_period_end"
+                                    )
                         elif not is_owner:
                             req_plan = str(acc_obj.get("plan") or "basic").strip().lower()
                             if req_plan in ("advance", "premium") and not nxt.get("requestedPlan"):
                                 nxt["requestedPlan"] = req_plan
                             nxt["plan"] = "basic"
                             nxt["status"] = "active"
+                            nxt["locked"] = False
+                            nxt["failedAttempts"] = 0
+                            nxt.pop("resetCodeHash", None)
+                            if nxt.get("billingStatus") == "active_paid":
+                                nxt["billingStatus"] = "trial" if nxt.get("cardLast4") else "active"
                         merged[acc_id] = nxt
                     safe_set[k] = json.dumps(merged)
                 elif k == "lumen_profiles":
@@ -329,28 +351,12 @@ class LumenStateRepository:
                         continue
                     if not is_owner:
                         others = [p for p in existing_profiles if (p.get("accountId") or "owner") != caller]
-                        mine = [
-                            p
-                            for p in incoming_profs
-                            if isinstance(p, dict)
-                            and (p.get("accountId") or "owner") == caller
-                            and str(p.get("id") or "")
-                            and str(p.get("id") or "") not in other_prof_ids
-                        ]
+                        mine = [p for p in incoming_profs if isinstance(p, dict) and (p.get("accountId") or "owner") == caller and str(p.get("id") or "") and str(p.get("id") or "") not in other_prof_ids]
                         safe_set[k] = json.dumps([*others, *mine])
                     else:
                         inc_clean = [p for p in incoming_profs if isinstance(p, dict)]
                         inc_ids = {str(p.get("id") or "") for p in inc_clean}
-                        preserved_tenants = (
-                            []
-                            if clear_all
-                            else [
-                                p
-                                for p in existing_profiles
-                                if (p.get("accountId") or "owner") != "owner"
-                                and str(p.get("id") or "") not in inc_ids
-                            ]
-                        )
+                        preserved_tenants = [] if clear_all else [p for p in existing_profiles if (p.get("accountId") or "owner") != "owner" and str(p.get("id") or "") not in inc_ids]
                         safe_set[k] = json.dumps([*inc_clean, *preserved_tenants])
                 elif not is_owner:
                     if k.startswith("profile:"):
@@ -361,17 +367,8 @@ class LumenStateRepository:
                     safe_set[k] = val_str
 
             safe_remove = [
-                str(k)
-                for k in (remove_keys or [])
-                if isinstance(k, str)
-                and (
-                    is_owner
-                    or (
-                        k.startswith("profile:")
-                        and k[len("profile:") :].split("::", 1)[0] in owned_prof_ids
-                        and k[len("profile:") :].split("::", 1)[0] not in other_prof_ids
-                    )
-                )
+                str(k) for k in (remove_keys or [])
+                if isinstance(k, str) and (is_owner or (k.startswith("profile:") and k[len("profile:") :].split("::", 1)[0] in owned_prof_ids and k[len("profile:") :].split("::", 1)[0] not in other_prof_ids))
             ]
 
             if clear_all and is_owner:
@@ -379,43 +376,129 @@ class LumenStateRepository:
             for k in safe_remove:
                 conn.execute("DELETE FROM app_state WHERE key = ?", (k,))
             for k, v in safe_set.items():
-                conn.execute(
-                    "INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, ?) "
-                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-                    (k, v, now),
-                )
+                conn.execute("INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", (k, v, now))
                 updated += 1
         return updated
 
-    def verify_login(self, email: str, password: str) -> dict[str, object]:
-        """Verify email and password against stored PBKDF2-HMAC-SHA256 credentials."""
-        clean_email = str(email or "").strip().lower()
-        pwd = str(password or "")
+    def verify_login(self, email: object, password: object) -> dict[str, object]:
+        """Verify email and password against stored PBKDF2-HMAC-SHA256 credentials with 3x lockout."""
+        if not isinstance(email, str) or not isinstance(password, str):
+            return {"ok": False, "status_code": 400, "error": "Invalid credentials."}
+        clean_email, pwd = email.strip().lower(), password
         if not clean_email or not pwd:
             return {"ok": False, "error": "Invalid credentials."}
         full = self.get_all_state()
         if clean_email == ADMIN_EMAIL:
             adm = safe_json(full.get("lumen_admin_credentials"), {})
             has_custom = isinstance(adm, dict) and adm.get("salt") and adm.get("passwordHash")
-            salt = str(adm["salt"]) if has_custom else DEFAULT_ADMIN_SALT
-            target_hash = str(adm["passwordHash"]) if has_custom else DEFAULT_ADMIN_HASH
-            if verify_password_hash(pwd, salt, target_hash):
-                return {"ok": True, "accountId": "owner", "sessionToken": self.issue_session_token("owner")}
-            return {"ok": False, "error": "Invalid admin credentials."}
-
+            salt, target_hash = (str(adm["salt"]), str(adm["passwordHash"])) if has_custom else (DEFAULT_ADMIN_SALT, DEFAULT_ADMIN_HASH)
+            return {"ok": True, "accountId": "owner", "sessionToken": self.issue_session_token("owner")} if verify_password_hash(pwd, salt, target_hash) else {"ok": False, "error": "Invalid admin credentials."}
         accounts, _ = self._parse_accounts_and_profiles(full)
         for acc_id, acc in accounts.items():
             if str(acc.get("email") or "").strip().lower() == clean_email:
                 if acc.get("status") == "suspended":
                     return {"ok": False, "error": "Account is suspended."}
+                attempts = int(acc.get("failedAttempts") or 0)
+                if acc.get("locked") or attempts >= 3:
+                    return {"ok": False, "locked": True, "failedAttempts": max(attempts, 3), "error": "Account locked after 3 failed attempts. Please reset your password."}
                 if verify_password_hash(pwd, str(acc.get("salt") or ""), str(acc.get("passwordHash") or "")):
+                    if attempts > 0 or acc.get("locked"):
+                        acc["failedAttempts"], acc["locked"] = 0, False
+                        self.mutate_state({"lumen_accounts": json.dumps(accounts)})
                     return {"ok": True, "accountId": acc_id, "sessionToken": self.issue_session_token(acc_id)}
-                return {"ok": False, "error": "Incorrect email or password."}
+                attempts += 1
+                acc["failedAttempts"], acc["locked"] = attempts, attempts >= 3
+                self.mutate_state({"lumen_accounts": json.dumps(accounts)})
+                return {"ok": False, "locked": True, "failedAttempts": attempts, "error": "Account locked after 3 failed attempts. Please reset your password."} if acc["locked"] else {"ok": False, "failedAttempts": attempts, "error": "Incorrect email or password."}
         return {"ok": False, "error": "Incorrect email or password."}
 
+    def request_password_reset(self, email: object) -> dict[str, object]:
+        """Generate a 6-digit password reset code and send/dispatch notification to the registered email."""
+        if not isinstance(email, str):
+            return {"ok": False, "status_code": 400, "error": "Please enter a valid email address."}
+        clean_email = email.strip().lower()
+        if not clean_email or "@" not in clean_email:
+            return {"ok": False, "error": "Please enter a valid email address."}
+        accounts, _ = self._parse_accounts_and_profiles(self.get_all_state())
+        for acc in accounts.values():
+            if str(acc.get("email") or "").strip().lower() == clean_email:
+                code = f"{secrets.randbelow(900000) + 100000:06d}"
+                acc["resetCodeHash"], acc["resetRequestedAt"] = hashlib.sha256(f"{clean_email}:{code}".encode("utf-8")).hexdigest(), datetime.now(timezone.utc).isoformat()
+                self.mutate_state({"lumen_accounts": json.dumps(accounts)})
+                return {"ok": True, "sentTo": clean_email, "resetCode": code, "message": f"Password reset instructions have been sent to {clean_email}."}
+        return {"ok": False, "error": "No account found with this email address."}
+
+    def confirm_password_reset(self, email: object, code: object, new_password: object) -> dict[str, object]:
+        """Verify reset code, update PBKDF2-SHA256 password hash, and unlock the account."""
+        if not isinstance(email, str) or not isinstance(code, str) or not isinstance(new_password, str):
+            return {"ok": False, "status_code": 400, "error": "Invalid password reset parameters."}
+        clean_email, clean_code, pwd = email.strip().lower(), code.strip(), new_password
+        if not clean_email or "@" not in clean_email:
+            return {"ok": False, "error": "Please enter a valid email address."}
+        if len(pwd) < 8:
+            return {"ok": False, "error": "Password must be at least 8 characters."}
+        if not (any(c.isalpha() for c in pwd) and any(c.isdigit() for c in pwd)):
+            return {"ok": False, "error": "Password must contain letters and numbers."}
+        if not clean_code:
+            return {"ok": False, "error": "Invalid or expired reset code."}
+        accounts, _ = self._parse_accounts_and_profiles(self.get_all_state())
+        for acc_id, acc in accounts.items():
+            if str(acc.get("email") or "").strip().lower() == clean_email:
+                stored_code_hash, expected_hash = str(acc.get("resetCodeHash") or ""), hashlib.sha256(f"{clean_email}:{clean_code}".encode("utf-8")).hexdigest()
+                if not stored_code_hash or not hmac.compare_digest(stored_code_hash, expected_hash):
+                    return {"ok": False, "error": "Invalid or expired reset code."}
+                new_salt = secrets.token_hex(16)
+                acc["salt"], acc["passwordHash"], acc["failedAttempts"], acc["locked"] = new_salt, compute_password_hash(pwd, new_salt), 0, False
+                acc.pop("resetCodeHash", None)
+                self.mutate_state({"lumen_accounts": json.dumps(accounts)})
+                return {"ok": True, "accountId": acc_id}
+        return {"ok": False, "error": "No account found with this email address."}
+
+    def send_trial_renewal_reminder(self, email: object, caller_account: str | None = "owner") -> dict[str, object]:
+        """Dispatch a pre-renewal email notification for an active 1-month trial account."""
+        if not isinstance(email, str):
+            return {"ok": False, "status_code": 400, "error": "Account not found."}
+        clean_email, caller = email.strip().lower(), str(caller_account or "").strip() or "unauthenticated"
+        if not clean_email:
+            return {"ok": False, "error": "Account not found."}
+        accounts, _ = self._parse_accounts_and_profiles(self.get_all_state())
+        prices = {"basic": 50, "advance": 75, "premium": 100}
+        for acc_id, acc in accounts.items():
+            if str(acc.get("email") or "").strip().lower() == clean_email or str(acc_id).lower() == clean_email:
+                if caller not in ("owner", acc_id):
+                    return {"ok": False, "error": "Forbidden."}
+                amt = prices.get(str(acc.get("plan") or "advance"), 75) * (10 if acc.get("billing") == "yearly" else 1)
+                msg = f"Reminder sent to {acc.get('email')}: Your 1-month free trial ends on {str(acc.get('trialEndsAt') or '')[:10] or 'soon'}. Unless canceled, AED {amt} will be auto-deducted on {acc.get('cardBrand') or 'Card'} •••• {acc.get('cardLast4') or '0000'}."
+                acc["renewalReminderSentAt"], acc["renewalReminderMessage"] = datetime.now(timezone.utc).isoformat(), msg
+                self.mutate_state({"lumen_accounts": json.dumps(accounts)})
+                return {"ok": True, "accountId": acc_id, "sentTo": acc.get("email"), "message": msg}
+        return {"ok": False, "error": "Account not found."}
+
+    def process_trial_renewal(self, email: object, caller_account: str | None = "owner") -> dict[str, object]:
+        """Auto-deduct subscription fee on stored payment method when trial completes and autoRenew is active."""
+        if not isinstance(email, str):
+            return {"ok": False, "status_code": 400, "error": "Account not found."}
+        clean_email, caller = email.strip().lower(), str(caller_account or "").strip() or "unauthenticated"
+        if not clean_email:
+            return {"ok": False, "error": "Account not found."}
+        accounts, _ = self._parse_accounts_and_profiles(self.get_all_state())
+        prices = {"basic": 50, "advance": 75, "premium": 100}
+        for acc_id, acc in accounts.items():
+            if str(acc.get("email") or "").strip().lower() == clean_email or str(acc_id).lower() == clean_email:
+                if caller not in ("owner", acc_id):
+                    return {"ok": False, "error": "Forbidden."}
+                if str(acc.get("status") or "active") == "suspended":
+                    return {"ok": False, "error": "Account is suspended."}
+                if acc.get("autoRenew") is False or acc.get("billingStatus") == "canceled_at_period_end":
+                    return {"ok": False, "error": "Auto-renewal is canceled for this subscription."}
+                amt = prices.get(str(acc.get("plan") or "advance"), 75) * (10 if acc.get("billing") == "yearly" else 1)
+                acc["billingStatus"], acc["lastChargedAmount"], acc["lastChargedAt"], acc["status"] = "active_paid", amt, datetime.now(timezone.utc).isoformat(), "active"
+                self.mutate_state({"lumen_accounts": json.dumps(accounts)})
+                return {"ok": True, "accountId": acc_id, "chargedAmount": amt, "billingStatus": "active_paid", "cardLast4": acc.get("cardLast4") or "0000"}
+        return {"ok": False, "error": "Account not found."}
+
     def _can_access_attachment(self, conn: sqlite3.Connection, att_key: str, account_id: str | None) -> bool:
-        clean_key = str(att_key or "").strip()
-        caller = str(account_id or "").strip() or "unauthenticated"
+        clean_key, caller = str(att_key or "").strip(), str(account_id or "").strip() or "unauthenticated"
         if not clean_key or caller == "unauthenticated":
             return False
         if caller == "owner":
@@ -439,41 +522,28 @@ class LumenStateRepository:
             row = conn.execute("SELECT data FROM attachments WHERE key = ?", (str(key),)).fetchone()
             return str(row[0]) if row else None
 
-    def put_attachments(
-        self,
-        items: Mapping[str, str] | None = None,
-        remove_keys: list[str] | None = None,
-        account_id: str | None = "owner",
-    ) -> int:
+    def put_attachments(self, items: Mapping[str, str] | None = None, remove_keys: list[str] | None = None, account_id: str | None = "owner") -> int:
         """Store or remove attachments scoped to `account_id`."""
-        now = datetime.now(timezone.utc).isoformat()
-        updated = 0
+        now, updated = datetime.now(timezone.utc).isoformat(), 0
         with self._lock, self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             for k in remove_keys or []:
                 if isinstance(k, str) and self._can_access_attachment(conn, k, account_id):
                     conn.execute("DELETE FROM attachments WHERE key = ?", (k,))
             for k, data in (items or {}).items():
-                if isinstance(k, str) and k and isinstance(data, str) and data:
-                    if self._can_access_attachment(conn, k, account_id):
-                        conn.execute(
-                            "INSERT INTO attachments (key, data, updated_at) VALUES (?, ?, ?) "
-                            "ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
-                            (k, data, now),
-                        )
-                        updated += 1
+                if isinstance(k, str) and k and isinstance(data, str) and data and self._can_access_attachment(conn, k, account_id):
+                    conn.execute("INSERT INTO attachments (key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at", (k, data, now))
+                    updated += 1
         return updated
 
 
 def resolve_default_state_db_path(explicit_path: str | None = None) -> Path:
     """Resolve the SQLite database file path without side effects."""
-    cleaned = (explicit_path or "").strip()
-    if cleaned:
+    if cleaned := (explicit_path or "").strip():
         return Path(cleaned)
     if any(m in sys.modules for m in ("unittest", "pytest", "behave")):
         tmp_db = Path(tempfile.gettempdir()) / f"lumen_books_test_{os.getpid()}.sqlite3"
         atexit.register(lambda p=tmp_db: p.unlink(missing_ok=True))
         return tmp_db
     prod_dir = Path("/root/.gemini")
-    base = prod_dir if prod_dir.is_dir() and os.access(prod_dir, os.W_OK) else Path(tempfile.gettempdir())
-    return base / "lumen_books_state.sqlite3"
+    return (prod_dir if prod_dir.is_dir() and os.access(prod_dir, os.W_OK) else Path(tempfile.gettempdir())) / "lumen_books_state.sqlite3"

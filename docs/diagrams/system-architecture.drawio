@@ -29,13 +29,13 @@
           <mxGeometry x="450" y="180" width="190" height="70" as="geometry" />
         </mxCell>
         <!-- Row 3: Persistence Layer -->
-        <mxCell id="store_ledger" value="Tenant localStorage &amp; IndexedDB&#xa;(bookkeeping_history_v2, attachments)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="store_ledger" value="Online-Only State &amp; Attachments&#xa;(remoteStateMap / /api/v1/attachments)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="20" y="310" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="store_ops" value="localStorage: Directories &amp; Ops&#xa;(customers, inventory, expenses, payroll)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="store_ops" value="Tenant Cloud State (/api/v1/state)&#xa;(customers, inventory, expenses, payroll)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="235" y="310" width="190" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="store_config" value="localStorage: Auth, Profiles &amp; Audit&#xa;(accounts, profiles, settings, audit_log)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
+        <mxCell id="store_config" value="Cloud Auth, Profiles &amp; UI Config&#xa;(D1 / SQLite + localStorage UI prefs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontColor=#14532d;fontSize=12;fontStyle=1;" vertex="1" parent="grp_browser">
           <mxGeometry x="450" y="310" width="190" height="70" as="geometry" />
         </mxCell>
         <!-- Container Group: Container & AI Infrastructure -->

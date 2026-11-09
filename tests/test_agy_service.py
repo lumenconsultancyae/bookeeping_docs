@@ -486,11 +486,36 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
                 for bad_url, bad_body in (
                     (f"{self.base_url}/api/v1/state", b'{"set": "not-a-dict"}'),
                     (f"{self.base_url}/api/v1/attachments", b'{"remove": "not-a-list"}'),
+                    (f"{self.base_url}/api/v1/auth/login", b'{"email": ["u@example.com"], "password": true}'),
+                    (f"{self.base_url}/api/v1/auth/password-reset/request", b'{"email": ["u@example.com"]}'),
+                    (f"{self.base_url}/api/v1/auth/password-reset/confirm", b'{"email": "u@example.com", "code": "123456", "newPassword": ["a", 1, 2, 3, 4, 5, 6, 7]}'),
                 ):
                     bad_req = urllib.request.Request(bad_url, data=bad_body, headers=owner_headers, method="POST")
                     with self.assertRaises(urllib.error.HTTPError) as bad_ctx:
                         urllib.request.urlopen(bad_req, timeout=5)
                     self.assertEqual(bad_ctx.exception.code, 400)
+
+                reset_req = urllib.request.Request(
+                    f"{self.base_url}/api/v1/auth/password-reset/request",
+                    data=json.dumps({"email": "u@example.com"}).encode("utf-8"),
+                    headers=base_headers,
+                    method="POST",
+                )
+                with urllib.request.urlopen(reset_req, timeout=5) as resp:
+                    reset_res = json.loads(resp.read().decode("utf-8"))
+                    self.assertEqual((resp.status, reset_res.get("ok")), (200, True))
+                    reset_code = str(reset_res.get("resetCode") or "")
+                    self.assertEqual(len(reset_code), 6)
+
+                confirm_req = urllib.request.Request(
+                    f"{self.base_url}/api/v1/auth/password-reset/confirm",
+                    data=json.dumps({"email": "u@example.com", "code": reset_code, "newPassword": "TenantPass123"}).encode("utf-8"),
+                    headers=base_headers,
+                    method="POST",
+                )
+                with urllib.request.urlopen(confirm_req, timeout=5) as resp:
+                    confirm_res = json.loads(resp.read().decode("utf-8"))
+                    self.assertEqual((resp.status, confirm_res.get("ok")), (200, True))
 
                 repo.mutate_state({}, ["profile:p1::bookkeeping_history_v2"])
                 self.assertNotIn("profile:p1::bookkeeping_history_v2", repo.get_all_state())

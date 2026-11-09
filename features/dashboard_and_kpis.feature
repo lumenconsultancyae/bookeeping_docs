@@ -46,7 +46,14 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     Then the browser should redirect to the "/welcome" entrypoint
     When the visitor attempts to sign in with password "WrongPassword1"
     Then the sign-in modal should display the error "Incorrect email or password."
-    When the visitor attempts to sign in with password "Lumen2026"
+    When the visitor toggles the sign-in password visibility button and checks Remember me
+    Then the sign-in password input type should be "text" and Remember me should be checked
+    When the visitor attempts to sign in with password "WrongPassword2"
+    Then the sign-in modal should display the error "Incorrect email or password."
+    When the visitor attempts to sign in with password "WrongPassword3"
+    Then the sign-in modal should display the error "Account locked after 3 failed attempts. Please reset your password."
+    When the visitor resets their locked password via the registered email to "LumenReset2026"
+    And the visitor attempts to sign in with password "LumenReset2026"
     Then the dashboard page title should be "Dashboard"
     And the topbar should display the signed-in user email
 
@@ -87,10 +94,13 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     And the user navigates to the "Settings" view
     And the customer submits a plan upgrade request from Settings
     Then the Settings Subscription Plan card should display "Upgrade requested: Advance (Pending Admin Approval)"
-    When the administrator signs in to the Super-Admin Console with email "admin@lumenconsultancy.net" and password "LumenAdmin2026"
+    When the customer cancels and then resumes trial auto-renewal in Settings
+    And the administrator signs in to the Super-Admin Console with email "admin@lumenconsultancy.net" and password "LumenAdmin2026"
     Then the Super-Admin Console should display MRR metrics and list the registered company with a pending upgrade
     When the administrator approves the pending upgrade request for the registered company
     Then the Super-Admin Console should show no pending upgrade request for the registered company
+    When the administrator sends a trial renewal reminder and auto-deducts the trial subscription for the registered company
+    Then the Super-Admin Console should display "Charged AED 75" for the registered company
     When the administrator opens the customer books for the registered company from the Super-Admin Console
     And the user navigates to the "Expenses" view
     Then the Expense History table should list payee "DEWA Utility" with VAT "20.00" and total "420.00"
@@ -116,3 +126,17 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     And the user navigates to the "Dashboard" view
     Then the dashboard UAE Compliance Reminder widget should show Trade License status containing "Due in 15d" and Establishment Card status containing "Valid"
     And the dashboard UAE Compliance Reminder widget should list employee "Layla Al Hashimi" with "Expired" and "Due in 25d" alerts
+
+  @smoke @pdc_reminder @sidebar_icons
+  Scenario: Dashboard Upcoming PDC Cheques reminder displays supplier, clearing date, and amount and collapsed sidebar shows menu icons
+    When the user navigates to the "Cheque Registry" view
+    And the user registers an upcoming PDC cheque "CHQ-8801" for supplier "Al Futtaim Logistics" of "14250.00" AED clearing in "3" days
+    And the user registers an upcoming PDC cheque "CHQ-8899" for supplier "Distant Future Trading" of "99000.00" AED clearing in "45" days
+    And the user navigates to the "Dashboard" view
+    Then the dashboard Upcoming PDC Cheques reminder should display supplier "Al Futtaim Logistics" with clearing date in "3" days and amount "AED 14,250.00"
+    And the dashboard Upcoming PDC Cheques reminder should not display supplier "Distant Future Trading"
+    When a verification screenshot "dashboard_pdc_reminder_expanded" is captured
+    And the user toggles the sidebar menu collapse button
+    Then the collapsed sidebar menu should display SVG icons for "view-bank" and "view-cheques" instead of text monograms
+    When a verification screenshot "dashboard_pdc_reminder_collapsed_sidebar_icons" is captured
+    And the user toggles the sidebar menu collapse button

@@ -139,6 +139,9 @@ class BasePage:
         email: str,
         password: str,
         plan_id: str = "premium",
+        card_number: str = "4242 4242 4242 4242",
+        card_expiry: str = "12/28",
+        card_cvv: str = "123",
     ) -> None:
         """Register a new company profile and account from the `/welcome` page."""
         self.click_id(f"btnChoose-{plan_id}")
@@ -147,6 +150,10 @@ class BasePage:
         self.fill_input("setupEmail", email)
         self.fill_input("setupPassword", password)
         self.fill_input("setupPasswordConfirm", password)
+        self.fill_input("setupCardName", company_name)
+        self.fill_input("setupCardNumber", card_number)
+        self.fill_input("setupCardExpiry", card_expiry)
+        self.fill_input("setupCardCvv", card_cvv)
         self.click_id("btnSetupSubmit")
         self.wait_until(
             lambda d: d.find_element(By.ID, "view-dashboard").is_displayed()
