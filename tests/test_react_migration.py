@@ -288,6 +288,14 @@ class ReactStoreQueryKeysAndRouterTests(unittest.TestCase):
             const ctxA = { accountId: 'acc_tenant_a', profileId: 'prof_1' };
             const ctxB = { accountId: 'acc_tenant_b', profileId: 'prof_1' };
 
+            // Verify resolveContext() without explicit arguments reads active account/profile from LumenProfiles
+            window.LumenProfiles = {
+                currentAccount: () => ({ id: 'acc_live_tenant' }),
+                active: () => ({ id: 'prof_live_co' }),
+            };
+            const resolvedFromProfiles = LumenQueryKeys.resolveContext();
+            delete window.LumenProfiles;
+
             const keyA = LumenQueryKeys.ledger(ctxA, { status: 'posted' });
             const keyB = LumenQueryKeys.ledger(ctxB, { status: 'posted' });
 
@@ -323,6 +331,7 @@ class ReactStoreQueryKeysAndRouterTests(unittest.TestCase):
             const afterRollback = LumenQueryCache.getQueryData(keyA, ctxA);
 
             done({
+                resolvedFromProfiles,
                 keyA,
                 keyB,
                 validLen: validForA ? validForA.length : 0,
@@ -339,6 +348,7 @@ class ReactStoreQueryKeysAndRouterTests(unittest.TestCase):
                 retry503Exceeded: LumenQueryCache.shouldRetry(503, 4),
             });
         """)
+        self.assertEqual(result["resolvedFromProfiles"], {"accountId": "acc_live_tenant", "profileId": "prof_live_co"})
         self.assertNotEqual(result["keyA"], result["keyB"])
         self.assertEqual(result["validLen"], 1)
         self.assertIsNone(result["leakedToB"])
@@ -439,6 +449,49 @@ class ReactAppShellAndDashboardMountTests(unittest.TestCase):
         self.assertEqual(result["dashDisplayOnUnknown"], "none")
         self.assertEqual(result["recoveredView"], "view-dashboard")
         self.assertEqual(result["dashDisplayAfterRecover"], "block")
+
+    def test_sidebar_collapsed_mode_renders_svg_icons_for_all_menu_items(self) -> None:
+        result = self.dom.run("""
+            const { createElement: h } = window.React;
+            const { createRoot, flushSync } = window.ReactDOM;
+            const { LumenApp } = window.LumenReactViews;
+
+            const root = createRoot(document.getElementById('root'));
+            flushSync(() => root.render(h(LumenApp)));
+
+            const navItems = Array.from(document.querySelectorAll('.sidebar-nav .nav-item[data-target]'));
+            const missingSvgTargets = navItems
+                .filter((item) => !item.querySelector('svg'))
+                .map((item) => item.getAttribute('data-target'));
+
+            document.body.classList.add('sidebar-collapsed');
+            await tick(20);
+
+            const bankItem = document.querySelector('.sidebar-nav .nav-item[data-target="view-bank"]');
+            const bankSvg = bankItem ? bankItem.querySelector('svg') : null;
+            const bankSvgRect = bankSvg ? bankSvg.getBoundingClientRect() : { width: 0, height: 0 };
+            const bankBeforeContent = bankItem ? getComputedStyle(bankItem, '::before').content : '';
+            const pdcCardPresent = !!document.getElementById('pdcReminderCard');
+
+            done({
+                totalNavItems: navItems.length,
+                missingSvgTargets,
+                bankSvgWidth: Math.round(bankSvgRect.width),
+                bankSvgHeight: Math.round(bankSvgRect.height),
+                bankBeforeContent,
+                pdcCardPresent,
+            });
+        """)
+        self.assertGreaterEqual(result["totalNavItems"], 31)
+        self.assertEqual(
+            result["missingSvgTargets"],
+            [],
+            f"All sidebar menu items must have an SVG icon; missing on: {result['missingSvgTargets']}",
+        )
+        self.assertGreaterEqual(result["bankSvgWidth"], 16)
+        self.assertGreaterEqual(result["bankSvgHeight"], 16)
+        self.assertIn(result["bankBeforeContent"], ("none", "normal", '""'))
+        self.assertTrue(result["pdcCardPresent"])
 
 
 if __name__ == "__main__":

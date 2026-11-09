@@ -143,3 +143,80 @@ def step_verify_compliance_employee_alerts(context, emp_name: str, alert_one: st
     assert alert_two in list_text, (
         f"Expected alert '{alert_two}' in compliance alerts list, got '{list_text}'"
     )
+
+
+@when('the user registers an upcoming PDC cheque "{cheque_number}" for supplier "{supplier_name}" of "{amount}" AED clearing in "{days_offset}" days')
+def step_register_upcoming_pdc_cheque(
+    context,
+    cheque_number: str,
+    supplier_name: str,
+    amount: str,
+    days_offset: str,
+) -> None:
+    unique_cheque = f"{cheque_number}-{context.scenario_uid}"
+    clear_date = _offset_date_iso(int(days_offset))
+    context.pdc_cheque_number = unique_cheque
+    context.pdc_supplier_name = supplier_name
+    context.pdc_clear_date = clear_date
+    context.created_resources.append(("cheque", unique_cheque))
+    context.contacts_page.register_cheque(
+        cheque_number=unique_cheque,
+        created_date=_offset_date_iso(0),
+        cheque_date=clear_date,
+        amount=amount,
+        supplier_name=supplier_name,
+        bank_account="Emirates NBD",
+    )
+
+
+@then('the dashboard Upcoming PDC Cheques reminder should display supplier "{supplier_name}" with clearing date in "{days_offset}" days and amount "{expected_amount}"')
+def step_verify_dashboard_pdc_reminder(
+    context,
+    supplier_name: str,
+    days_offset: str,
+    expected_amount: str,
+) -> None:
+    expected_date = _offset_date_iso(int(days_offset))
+    summary = context.dashboard_page.get_pdc_reminder_summary()
+    list_text = summary["list_text"]
+    assert supplier_name in list_text, (
+        f"Expected supplier '{supplier_name}' in PDC reminder list, got '{list_text}'"
+    )
+    assert expected_date in list_text, (
+        f"Expected clearing date '{expected_date}' in PDC reminder list, got '{list_text}'"
+    )
+    assert expected_amount in list_text, (
+        f"Expected amount '{expected_amount}' in PDC reminder list, got '{list_text}'"
+    )
+
+
+@then('the dashboard Upcoming PDC Cheques reminder should not display supplier "{excluded_supplier}"')
+def step_verify_dashboard_pdc_reminder_excludes(context, excluded_supplier: str) -> None:
+    summary = context.dashboard_page.get_pdc_reminder_summary()
+    list_text = summary["list_text"]
+    assert excluded_supplier not in list_text, (
+        f"Expected supplier '{excluded_supplier}' (>30 days) to be excluded from PDC reminder list, got '{list_text}'"
+    )
+
+
+@when("the user toggles the sidebar menu collapse button")
+def step_toggle_sidebar_collapse(context) -> None:
+    context.dashboard_page.toggle_sidebar_collapse()
+
+
+@then('the collapsed sidebar menu should display SVG icons for "{view_target}" and "{second_target}" instead of text monograms')
+def step_verify_collapsed_sidebar_svg_icons(context, view_target: str, second_target: str) -> None:
+    for target in (view_target, second_target):
+        state = context.dashboard_page.get_sidebar_menu_icon_state(target)
+        assert state.get("is_collapsed") is True, (
+            f"Expected body.sidebar-collapsed to be active when checking '{target}', got {state}"
+        )
+        assert state.get("has_svg") is True, (
+            f"Expected sidebar item '{target}' to contain an <svg> icon, got {state}"
+        )
+        assert float(state.get("svg_width", 0)) > 0 and float(state.get("svg_height", 0)) > 0, (
+            f"Expected sidebar item '{target}' SVG icon to have visible dimensions, got {state}"
+        )
+        assert state.get("before_display") == "none" or state.get("before_content") in ("none", ""), (
+            f"Expected ::before text monogram to be suppressed for '{target}', got {state}"
+        )

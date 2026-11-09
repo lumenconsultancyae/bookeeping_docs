@@ -401,5 +401,121 @@ console.log(JSON.stringify({ status: 'ok' }));
         self.assertEqual(payload["status"], "ok")
 
 
+class PdcChequeReminderUnitTests(unittest.TestCase):
+    """Verify the Home Dashboard Post-Dated Cheque (PDC) Reminder widget (`evaluatePdc`, `renderPdcWidget`)."""
+
+    def test_views_and_script_wire_pdc_reminder_card_and_live_refresh(self) -> None:
+        index_bundle = _read_index_html_bundle()
+        script_bundle = _read_script_js_bundle()
+        reminder_js = (APP_DIR / "compliance-reminders.js").read_text(encoding="utf-8")
+
+        for dom_id in (
+            "pdcReminderCard",
+            "pdcReminderBadge",
+            "pdcReminderList",
+        ):
+            self.assertIn(f'id="{dom_id}"', index_bundle)
+
+        for sym in (
+            "evaluatePdc",
+            "renderPdcWidget",
+        ):
+            self.assertIn(sym, reminder_js)
+
+        self.assertIn("UAEComplianceReminders.renderPdcWidget", script_bundle)
+
+    def test_pdc_reminder_executes_behaviorally_in_node_with_supplier_date_and_amount(self) -> None:
+        node_script = r"""
+const assert = require('assert');
+const path = require('path');
+const appDir = process.env.APP_DIR;
+
+const store = {};
+global.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; }
+};
+const elements = {};
+global.document = {
+    getElementById: (id) => {
+        if (!elements[id]) elements[id] = { textContent: '', innerHTML: '', className: '', style: {} };
+        return elements[id];
+    }
+};
+global.window = {
+    localStorage: global.localStorage,
+    document: global.document
+};
+
+const UAEComplianceReminders = require(path.join(appDir, 'compliance-reminders.js'));
+assert.strictEqual(typeof UAEComplianceReminders.evaluatePdc, 'function');
+assert.strictEqual(typeof UAEComplianceReminders.renderPdcWidget, 'function');
+
+// 1. Empty cheques state
+const emptyPdc = UAEComplianceReminders.evaluatePdc({
+    cheques: [],
+    referenceDate: '2026-11-09'
+});
+assert.strictEqual(emptyPdc.totalCount, 0);
+assert.strictEqual(emptyPdc.overallTone, 'safe');
+
+// 2. Mixed PDC cheques: due today, clearing soon (<= 7d), upcoming (<= 30d), future (> 30d), past-dated (< 0d), and missing date (null)
+const pdcEval = UAEComplianceReminders.evaluatePdc({
+    cheques: [
+        { id: 'chq_1', createdAt: '2026-10-15', date: '2026-11-12', chequeNumber: 'CHQ-9001', amount: 18500.5, supplier: 'Al Futtaim Building Materials LLC', bank: 'Emirates NBD' },
+        { id: 'chq_2', createdAt: '2026-10-01', date: '2026-11-09', chequeNumber: 'CHQ-9002', amount: 42000, supplier: 'Gulf Logistics <script>alert(1)</script>', bank: 'ADCB' },
+        { id: 'chq_3', createdAt: '2026-10-20', date: '2026-11-28', chequeNumber: 'CHQ-9003', amount: 9750, supplier: 'Oasis MEP Contractors', bank: 'FAB' },
+        { id: 'chq_4', createdAt: '2026-10-25', date: '2026-12-25', chequeNumber: 'CHQ-9004', amount: 99000, supplier: 'Distant Future Supplier', bank: 'Mashreq' },
+        { id: 'chq_5', createdAt: '2026-09-10', date: '2026-10-01', chequeNumber: 'CHQ-9005', amount: 15000, supplier: 'Past Overdue Supplier', bank: 'RAKBank' },
+        { id: 'chq_6', createdAt: '2026-10-10', date: '', chequeNumber: 'CHQ-9006', amount: 12000, supplier: 'Missing Date Supplier', bank: 'CBD' }
+    ],
+    referenceDate: '2026-11-09'
+});
+
+assert.strictEqual(pdcEval.totalCount, 3);
+assert(!pdcEval.items.some(i => i.chequeNumber === 'CHQ-9004'), 'Cheques clearing > 30 days must be excluded from 30-day reminder');
+assert(!pdcEval.items.some(i => i.chequeNumber === 'CHQ-9005'), 'Past-dated cheques (daysUntilClear < 0) must be excluded from 0..30-day reminder');
+assert(!pdcEval.items.some(i => i.chequeNumber === 'CHQ-9006'), 'Dateless cheques (daysUntilClear === null) must be excluded from 0..30-day reminder');
+assert.strictEqual(pdcEval.items[0].chequeNumber, 'CHQ-9002');
+assert.strictEqual(pdcEval.items[0].daysUntilClear, 0);
+assert.strictEqual(pdcEval.items[1].chequeNumber, 'CHQ-9001');
+assert.strictEqual(pdcEval.items[1].daysUntilClear, 3);
+assert.strictEqual(pdcEval.items[2].chequeNumber, 'CHQ-9003');
+
+// 3. DOM rendering verification: supplier name, clearing date, and formatted amount in AED with XSS escaping
+store['bookkeeping_cheques'] = JSON.stringify([
+    { id: 'chq_1', createdAt: '2026-10-15', date: '2026-11-12', chequeNumber: 'CHQ-9001', amount: 18500.5, supplier: 'Al Futtaim Building Materials LLC', bank: 'Emirates NBD' },
+    { id: 'chq_2', createdAt: '2026-10-01', date: '2026-11-09', chequeNumber: 'CHQ-9002', amount: 42000, supplier: 'Gulf Logistics <script>evil()</script>', bank: 'ADCB' },
+    { id: 'chq_4', createdAt: '2026-10-25', date: '2026-12-25', chequeNumber: 'CHQ-9004', amount: 99000, supplier: 'Distant Future Supplier', bank: 'Mashreq' },
+    { id: 'chq_5', createdAt: '2026-09-10', date: '2026-10-01', chequeNumber: 'CHQ-9005', amount: 15000, supplier: 'Past Overdue Supplier', bank: 'RAKBank' },
+    { id: 'chq_6', createdAt: '2026-10-10', date: '', chequeNumber: 'CHQ-9006', amount: 12000, supplier: 'Missing Date Supplier', bank: 'CBD' }
+]);
+
+UAEComplianceReminders.renderPdcWidget({ referenceDate: '2026-11-09' });
+const listHtml = elements['pdcReminderList'].innerHTML;
+assert(listHtml.includes('Al Futtaim Building Materials LLC'), 'Must show supplier name');
+assert(listHtml.includes('2026-11-12'), 'Must show cheque clearing date');
+assert(listHtml.includes('18,500.50'), 'Must show formatted cheque amount');
+assert(listHtml.includes('42,000.00'), 'Must show second cheque formatted amount');
+assert(!listHtml.includes('Distant Future Supplier'), 'Must exclude >30d cheques from widget DOM');
+assert(!listHtml.includes('Past Overdue Supplier'), 'Must exclude <0d cheques from widget DOM');
+assert(!listHtml.includes('Missing Date Supplier'), 'Must exclude null-date cheques from widget DOM');
+assert(!listHtml.includes('<script>evil()</script>'), 'Must escape XSS in supplier name');
+assert(listHtml.includes('&lt;script&gt;evil()&lt;/script&gt;'), 'Must render escaped supplier name');
+
+const payrollSrc = require('fs').readFileSync(path.join(appDir, 'app-payroll-and-wps.js'), 'utf8');
+assert(payrollSrc.includes('escChequeHtml(c.supplier)') && payrollSrc.includes('escChequeHtml(c.chequeNumber)'), 'loadChequeRegistry must HTML-escape cheque fields');
+
+console.log(JSON.stringify({ status: 'ok' }));
+"""
+        from tests.js_runner import run_node_script
+
+        proc = run_node_script(node_script, APP_DIR)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload["status"], "ok")
+
+
 if __name__ == "__main__":
     unittest.main()

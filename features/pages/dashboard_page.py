@@ -124,3 +124,47 @@ class DashboardPage(BasePage):
             "employee_badge": self.get_text_by_id("compEmployeeAlertsBadge"),
             "employee_list_text": self.get_text_by_id("compEmployeeAlertsList"),
         }
+
+    def get_pdc_reminder_summary(self) -> dict[str, str]:
+        """Return the live badge and list text inside `#pdcReminderCard` on the Dashboard."""
+        self.driver.execute_script(
+            "const el = document.getElementById('pdcReminderCard'); if (el) el.scrollIntoView({ block: 'center' });"
+        )
+        return {
+            "badge": self.get_text_by_id("pdcReminderBadge"),
+            "list_text": self.get_text_by_id("pdcReminderList"),
+        }
+
+    def toggle_sidebar_collapse(self) -> None:
+        """Click `#btnSidebarToggle` to collapse or expand the sidebar navigation."""
+        self.click_id("btnSidebarToggle")
+
+    def get_sidebar_menu_icon_state(self, view_target: str) -> dict[str, object]:
+        """Return collapsed state and SVG icon dimensions for a `.nav-item[data-target]` link."""
+        result = self.driver.execute_script(
+            """
+            const target = arguments[0];
+            const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+            const item = document.querySelector(`.sidebar .nav-item[data-target="${target}"]`);
+            if (!item) return { is_collapsed: isCollapsed, found: false };
+            const parentGroup = item.closest('.nav-dropdown');
+            if (parentGroup && !parentGroup.classList.contains('open')) {
+                const header = parentGroup.querySelector('.nav-dropdown-header');
+                if (header) header.click();
+            }
+            const svg = item.querySelector('svg');
+            const svgRect = svg ? svg.getBoundingClientRect() : { width: 0, height: 0 };
+            const beforeStyle = window.getComputedStyle(item, '::before');
+            return {
+                is_collapsed: isCollapsed,
+                found: true,
+                has_svg: Boolean(svg),
+                svg_width: svgRect.width,
+                svg_height: svgRect.height,
+                before_display: beforeStyle ? beforeStyle.display : '',
+                before_content: beforeStyle ? beforeStyle.content : ''
+            };
+            """,
+            view_target,
+        )
+        return dict(result or {})
