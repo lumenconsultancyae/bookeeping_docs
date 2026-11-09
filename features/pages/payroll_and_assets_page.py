@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from selenium.webdriver.common.by import By
-
 from features.pages.base_page import BasePage
 
 
@@ -27,7 +25,7 @@ class PayrollAndAssetsPage(BasePage):
     ) -> None:
         """Open `#addEmployeeModal`, populate employee details, and submit `#addEmployeeForm`."""
         self.click_id("btnOpenAddEmployee")
-        self.wait_until(lambda d: d.find_element(By.ID, "addEmployeeModal").is_displayed())
+        self.wait_until(lambda p: p.locator("#addEmployeeModal").is_visible())
         self.fill_input("dirEmpName", name)
         self.fill_input("dirEmpPosition", position)
         self.fill_input("dirEmpDate", date_hired)
@@ -38,12 +36,12 @@ class PayrollAndAssetsPage(BasePage):
         self.fill_input("dirEmpHousing", housing_allowance)
         self.fill_input("dirEmpTelephone", telephone_allowance)
         self.fill_input("dirEmpAllowance", other_allowance)
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('addEmployeeForm').requestSubmit();"
         )
         self.accept_alert_if_present(timeout=1.5)
         self.wait_until(
-            lambda d: not d.find_element(By.ID, "addEmployeeModal").is_displayed()
+            lambda p: not p.locator("#addEmployeeModal").is_visible()
         )
 
     def get_employee_directory_text(self) -> str:
@@ -67,11 +65,11 @@ class PayrollAndAssetsPage(BasePage):
     ) -> str | None:
         """Open the Timesheet modal, configure pay period, account, and WPS SCR fields, preview .SIF, and save."""
         self.click_id("btnOpenTimesheetModal")
-        self.wait_until(lambda d: d.find_element(By.ID, "timesheetModal").is_displayed())
+        self.wait_until(lambda p: p.locator("#timesheetModal").is_visible())
         self.fill_input("timesheetPeriod", pay_period_yyyy_mm)
         self.select_by_value_or_text("payrollPaymentAccount", payment_account)
-        cb = self.driver.find_element(By.ID, "payrollAccrueEOSB")
-        if cb.is_selected() != bool(accrue_eosb):
+        cb = self.page.locator("#payrollAccrueEOSB")
+        if cb.is_checked() != bool(accrue_eosb):
             self.click_id("payrollAccrueEOSB")
         if wps_employer_id is not None:
             self.fill_input("wpsEmployerId", wps_employer_id)
@@ -119,7 +117,7 @@ class PayrollAndAssetsPage(BasePage):
         self.fill_input("companyPhone", company_phone)
         self.click_id("btnSaveCompanySettings")
         self.accept_alert_if_present(timeout=1.5)
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const s = JSON.parse(localStorage.getItem('bookkeeping_settings') || '{}');
             s.companyLogo = arguments[0];
@@ -132,41 +130,57 @@ class PayrollAndAssetsPage(BasePage):
 
     def get_timesheet_employee_filter_options(self) -> list[str]:
         """Return all option texts inside `#filterTimesheetEmployee` from the live DOM."""
-        sel_el = self.wait_until(lambda d: d.find_element(By.ID, "filterTimesheetEmployee"))
-        return [opt.text.strip() for opt in sel_el.find_elements(By.TAG_NAME, "option")]
+        self.wait_until(lambda p: p.locator("#filterTimesheetEmployee").count() > 0)
+        return self.evaluate_script(
+            """
+            const sel = document.getElementById('filterTimesheetEmployee');
+            return sel ? Array.from(sel.options).map(o => (o.textContent || '').trim()) : [];
+            """
+        )
 
     def filter_timesheets_by_employee(self, employee_name: str) -> None:
         """Select the option matching `employee_name` in `#filterTimesheetEmployee`."""
-        sel_el = self.wait_until(lambda d: d.find_element(By.ID, "filterTimesheetEmployee"))
+        self.wait_until(lambda p: p.locator("#filterTimesheetEmployee").count() > 0)
         target_value = ""
         if employee_name and employee_name != "All Employees":
-            for opt in sel_el.find_elements(By.TAG_NAME, "option"):
-                if employee_name in opt.text:
-                    target_value = opt.get_attribute("value") or ""
-                    break
+            target_value = self.evaluate_script(
+                """
+                const sel = document.getElementById('filterTimesheetEmployee');
+                if (!sel) return '';
+                const opt = Array.from(sel.options).find(o => (o.textContent || '').includes(arguments[0]));
+                return opt ? (opt.value || '') : '';
+                """,
+                employee_name,
+            )
         self.select_by_value_or_text("filterTimesheetEmployee", target_value)
 
     def open_payslip_for_employee(self, period: str, employee_name: str) -> dict:
         """Click the `Payslip` button for `employee_name` inside `#savedTimesheetsContainer` and return modal details."""
-        container = self.wait_until(lambda d: d.find_element(By.ID, "savedTimesheetsContainer"))
-        clicked = False
-        for row in container.find_elements(By.CSS_SELECTOR, "tbody tr"):
-            if employee_name in row.text:
-                btn = row.find_element(By.TAG_NAME, "button")
-                btn.click()
-                clicked = True
-                break
+        self.wait_until(lambda p: p.locator("#savedTimesheetsContainer").count() > 0)
+        clicked = self.evaluate_script(
+            """
+            const container = document.getElementById('savedTimesheetsContainer');
+            if (!container) return false;
+            for (const row of container.querySelectorAll('tbody tr')) {
+                if ((row.innerText || row.textContent || '').includes(arguments[0])) {
+                    const btn = row.querySelector('button');
+                    if (btn) { btn.click(); return true; }
+                }
+            }
+            return false;
+            """,
+            employee_name,
+        )
         assert clicked, f"Payslip button for '{employee_name}' in period '{period}' not found"
-        self.wait_until(lambda d: d.find_element(By.ID, "invoiceModal").is_displayed())
-        doc_el = self.driver.find_element(By.ID, "modalBody")
-        modal_el = self.driver.find_element(By.ID, "invoiceModal")
+        self.wait_until(lambda p: p.locator("#invoiceModal").is_visible())
+        doc_el = self.page.locator("#modalBody")
+        modal_el = self.page.locator("#invoiceModal")
         result = {
-            "displayed": modal_el.is_displayed(),
-            "text": doc_el.text,
-            "html": doc_el.get_attribute("innerHTML") or "",
+            "displayed": modal_el.is_visible(),
+            "text": doc_el.inner_text(),
+            "html": doc_el.inner_html(),
         }
-        close_btn = self.driver.find_element(By.CSS_SELECTOR, "#modalFooter .btn-secondary")
-        close_btn.click()
+        self.page.locator("#modalFooter .btn-secondary").click()
         return result
 
     # --- Fixed Assets (`#view-assets`) ---
@@ -180,7 +194,7 @@ class PayrollAndAssetsPage(BasePage):
         years: int,
     ) -> None:
         """Add a Fixed Asset record and refresh the Fixed Assets Directory."""
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const assets = JSON.parse(localStorage.getItem('bookkeeping_assets') || '[]');
             const val = Number(arguments[3]);
@@ -206,7 +220,7 @@ class PayrollAndAssetsPage(BasePage):
 
     def get_assets_directory_text(self) -> str:
         """Return the text of `#assetsDirectoryBody`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.loadAssetsDirectory === 'function') window.loadAssetsDirectory();"
         )
         return self.get_text_by_id("assetsDirectoryBody")

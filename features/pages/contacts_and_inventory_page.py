@@ -26,7 +26,7 @@ class ContactsAndInventoryPage(BasePage):
         self.fill_input("dirCustEmail", email)
         self.fill_input("dirCustTrn", trn)
         self.fill_input("dirCustTerms", payment_terms)
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('addCustomerForm').requestSubmit();"
         )
         self.accept_alert_if_present(timeout=1.5)
@@ -51,7 +51,7 @@ class ContactsAndInventoryPage(BasePage):
         self.fill_input("dirSupAddress", address)
         self.fill_input("dirSupPhone", phone)
         self.fill_input("dirSupTerms", payment_terms)
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('addSupplierForm').requestSubmit();"
         )
         self.accept_alert_if_present(timeout=1.5)
@@ -84,7 +84,7 @@ class ContactsAndInventoryPage(BasePage):
         self.fill_input("invCost", unit_cost)
         self.fill_input("invMarkup", markup_pct)
         self.fill_input("invQty", initial_qty)
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('addInventoryForm').requestSubmit();"
         )
         self.accept_alert_if_present(timeout=1.5)
@@ -117,7 +117,7 @@ class ContactsAndInventoryPage(BasePage):
         self.fill_input("chequeAmount", amount)
         self.fill_input("chequeSupplier", supplier_name)
         self.fill_input("chequeBank", bank_account)
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('addChequeForm').requestSubmit();"
         )
         self.accept_alert_if_present(timeout=1.5)

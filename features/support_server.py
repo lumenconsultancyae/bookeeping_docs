@@ -217,7 +217,11 @@ def build_mock_ai_response(body_text: str) -> dict:
         return {"text": f"```json\n{json.dumps(payload, indent=2)}\n```"}
 
     # Default: SUPPLIER INVOICE
-    if "MFZ-339673" in body_text or "application/pdf" in body_text:
+    if (
+        "MFZ-339673" in body_text
+        or "application/pdf" in body_text
+        or "Extract the supplier invoice JSON directly" in body_text
+    ):
         payload = {
             "date": "2026-06-23",
             "invoiceNum": "MFZ-339673",
@@ -367,7 +371,15 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
                 "/__vendor__/fonts.css",
             )
             html = html.replace(
+                "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap",
+                "/__vendor__/fonts.css",
+            )
+            html = html.replace(
                 "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+                "/__vendor__/pdf.min.js",
+            )
+            html = html.replace(
+                "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js",
                 "/__vendor__/pdf.min.js",
             )
             html = html.replace(
@@ -425,8 +437,46 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/v1/auth/login":
             repo = agy_service.get_state_repo()
             req_obj = agy_service._parse_json_object(body_bytes)
-            res = repo.verify_login(str(req_obj.get("email") or ""), str(req_obj.get("password") or ""))
-            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            res = repo.verify_login(req_obj.get("email"), req_obj.get("password"))
+            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=int(res.get("status_code") or 200))
+            return
+        if parsed.path in ("/api/v1/auth/password-reset/request", "/api/v1/auth/reset-request"):
+            repo = agy_service.get_state_repo()
+            req_obj = agy_service._parse_json_object(body_bytes)
+            res = repo.request_password_reset(req_obj.get("email"))
+            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=int(res.get("status_code") or 200))
+            return
+        if parsed.path in ("/api/v1/auth/password-reset/confirm", "/api/v1/auth/reset-confirm"):
+            repo = agy_service.get_state_repo()
+            req_obj = agy_service._parse_json_object(body_bytes)
+            res = repo.confirm_password_reset(
+                req_obj.get("email"),
+                req_obj.get("code"),
+                req_obj.get("newPassword"),
+            )
+            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=int(res.get("status_code") or 200))
+            return
+        if parsed.path == "/api/v1/auth/trial-reminder":
+            repo = agy_service.get_state_repo()
+            caller_acc = repo.resolve_caller_from_headers(
+                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
+                account_header=self.headers.get("X-Lumen-Account"),
+                session_header=self.headers.get("X-Lumen-Session"),
+            )
+            req_obj = agy_service._parse_json_object(body_bytes)
+            res = repo.send_trial_renewal_reminder(req_obj.get("email"), caller_account=caller_acc)
+            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=403 if res.get("error") == "Forbidden." else int(res.get("status_code") or 200))
+            return
+        if parsed.path == "/api/v1/auth/trial-renew":
+            repo = agy_service.get_state_repo()
+            caller_acc = repo.resolve_caller_from_headers(
+                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
+                account_header=self.headers.get("X-Lumen-Account"),
+                session_header=self.headers.get("X-Lumen-Session"),
+            )
+            req_obj = agy_service._parse_json_object(body_bytes)
+            res = repo.process_trial_renewal(req_obj.get("email"), caller_account=caller_acc)
+            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=403 if res.get("error") == "Forbidden." else int(res.get("status_code") or 200))
             return
         if parsed.path == "/api/v1/state":
             repo = agy_service.get_state_repo()

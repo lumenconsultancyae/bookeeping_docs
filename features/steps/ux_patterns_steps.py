@@ -38,8 +38,8 @@ def step_seed_ledger(context, count: int) -> None:
 
 @given("the browser window is resized to a {width:d} px wide tablet viewport")
 def step_resize_window(context, width: int) -> None:
-    context.driver.set_window_size(width, 1000)
-    context.ux_page.wait_until(lambda d: d.execute_script("return window.innerWidth <= 960;"))
+    context.page.set_viewport_size({"width": width, "height": 1000})
+    context.ux_page.wait_until(lambda _p: context.base_page.evaluate_script("return window.innerWidth <= 960;"))
 
 
 # --- Paginated tables ---

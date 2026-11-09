@@ -186,6 +186,39 @@ def step_verify_plan_upgrade_request_badge(context, expected_badge: str) -> None
     assert expected_badge in card_text, (
         f"Expected '{expected_badge}' in Subscription Plan card, got:\n{card_text}"
     )
+    assert "4242" in card_text and "Cancel Auto-Renewal" in card_text, (
+        f"Expected 1-month trial card on file (•••• 4242) and Cancel Auto-Renewal button in Subscription Plan card, got:\n{card_text}"
+    )
+
+
+@when("the customer cancels and then resumes trial auto-renewal in Settings")
+def step_cancel_and_resume_auto_renewal_in_settings(context) -> None:
+    canceled_text = context.expenses_admin_page.toggle_auto_renew_in_settings()
+    assert "Auto-renew canceled" in canceled_text and "Resume Auto-Renewal" in canceled_text, (
+        f"Expected 'Auto-renew canceled' and 'Resume Auto-Renewal' after canceling auto-renewal, got:\n{canceled_text}"
+    )
+    resumed_text = context.expenses_admin_page.toggle_auto_renew_in_settings()
+    assert "Auto-renews" in resumed_text and "Cancel Auto-Renewal" in resumed_text, (
+        f"Expected 'Auto-renews' and 'Cancel Auto-Renewal' after resuming auto-renewal, got:\n{resumed_text}"
+    )
+    context.plan_card_text = resumed_text
+
+
+@when("the administrator sends a trial renewal reminder and auto-deducts the trial subscription for the registered company")
+def step_admin_trial_reminder_and_auto_deduct(context) -> None:
+    context.updated_admin_table = (
+        context.expenses_admin_page.trigger_admin_trial_reminder_and_auto_deduct(
+            context.registered_company_name
+        )
+    )
+
+
+@then('the Super-Admin Console should display "{expected_charge_text}" for the registered company')
+def step_verify_admin_trial_auto_deducted(context, expected_charge_text: str) -> None:
+    table_text = getattr(context, "updated_admin_table", "")
+    assert expected_charge_text in table_text, (
+        f"Expected '{expected_charge_text}' in /admin table after auto-deduct, got:\n{table_text[:500]}"
+    )
 
 
 @when(
@@ -254,7 +287,7 @@ def step_fill_whatsapp_customer_invoice(
 ) -> None:
     unique_customer = f"{customer_name} {context.scenario_uid}"
     context.last_invoice_customer = unique_customer
-    context.driver.execute_script(
+    context.base_page.evaluate_script(
         """
         const c = JSON.parse(localStorage.getItem('bookkeeping_customers') || '[]');
         c.push({ id: 'cust-wa-1', name: arguments[0], phone: arguments[1], trn: '100445566778803' });
@@ -295,7 +328,7 @@ def step_verify_bilingual_whatsapp_preview(
     assert "This is a computer generated document and does not need a signature." in preview_en, f"Missing footer note:\n{preview_en}"
     assert arabic_heading not in preview_en, "English-only PDF preview must not mix Arabic headings"
     assert payment_link in preview_en, f"Expected payment link '{payment_link}' in English preview"
-    table_bounds = context.driver.execute_script(
+    table_bounds = context.base_page.evaluate_script(
         "const t = document.querySelector('#modalBody .ei-table');"
         "const p = document.querySelector('#modalBody .e-invoice-preview');"
         "const l = document.querySelector('#modalBody .ei-brand-left');"
@@ -307,11 +340,11 @@ def step_verify_bilingual_whatsapp_preview(
     )
     assert table_bounds["tableFitsPreview"] and table_bounds["overflowCells"] == 0 and table_bounds["sameHeaderRow"], f"Layout/table bounds check failed: {table_bounds}"
     context.base_page.click_id("btnShareWhatsApp")
-    context.driver.save_screenshot(str(SCREENSHOTS_DIR / "english_only_invoice_pdf_modal.png"))
+    context.page.screenshot(path=str(SCREENSHOTS_DIR / "english_only_invoice_pdf_modal.png"))
 
     # Verify @media print isolation (background .app-layout and modal header/footer hidden, full invoice visible)
-    context.driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {"media": "print"})
-    print_styles = context.driver.execute_script(
+    context.page.emulate_media(media="print")
+    print_styles = context.base_page.evaluate_script(
         "return {"
         "  appLayout: window.getComputedStyle(document.querySelector('.app-layout')).display,"
         "  modalHeader: window.getComputedStyle(document.querySelector('#invoiceModal .modal-header')).display,"
@@ -321,8 +354,8 @@ def step_verify_bilingual_whatsapp_preview(
     assert print_styles["appLayout"] == "none", f"Expected .app-layout hidden in @media print, got {print_styles}"
     assert print_styles["modalHeader"] == "none", f"Expected modal-header hidden in @media print, got {print_styles}"
     assert print_styles["modalFooter"] == "none", f"Expected modal-footer hidden in @media print, got {print_styles}"
-    context.driver.save_screenshot(str(SCREENSHOTS_DIR / "invoice_print_media_preview.png"))
-    context.driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {"media": "screen"})
+    context.page.screenshot(path=str(SCREENSHOTS_DIR / "invoice_print_media_preview.png"))
+    context.page.emulate_media(media="screen")
 
     # 2. Switch language selector to Arabic-only ('ar') and verify Arabic-only PDF preview & WhatsApp message
     context.base_page.select_by_value_or_text("modalDocLangSelect", "ar")
@@ -331,9 +364,9 @@ def step_verify_bilingual_whatsapp_preview(
     assert "TAX INVOICE" not in preview_ar, "Arabic-only PDF preview must not mix English headings"
     assert payment_link in preview_ar, f"Expected payment link '{payment_link}' in Arabic preview"
     context.base_page.click_id("btnShareWhatsApp")
-    wa_url = context.driver.execute_script("return window.__lastWhatsAppShareUrl || '';")
+    wa_url = context.base_page.evaluate_script("return window.__lastWhatsAppShareUrl || '';")
     assert f"https://wa.me/{expected_phone}?text=" in wa_url, f"Expected wa.me URL for {expected_phone}, got: {wa_url}"
-    context.driver.save_screenshot(str(SCREENSHOTS_DIR / "arabic_only_invoice_pdf_modal.png"))
+    context.page.screenshot(path=str(SCREENSHOTS_DIR / "arabic_only_invoice_pdf_modal.png"))
     context.base_page.dismiss_modals_if_present()
 
 
@@ -343,10 +376,9 @@ def step_snap_camera_receipt_in_expenses(context) -> None:
 
     sample_png = Path("/tmp/sample_camera_receipt.png")
     context.transactions_page.generate_sample_supplier_invoice_png(sample_png)
-    cam_input = context.driver.find_element("id", "expCameraInput")
-    cam_input.send_keys(str(sample_png))
+    context.page.locator("#expCameraInput").set_input_files(str(sample_png))
     context.base_page.wait_until(
-        lambda d: d.find_element("id", "expVendorTrn").get_attribute("value") == "100234567890003"
+        lambda p: p.locator("#expVendorTrn").input_value() == "100234567890003"
     )
 
 

@@ -8,28 +8,41 @@ from pathlib import Path
 import shutil
 import subprocess
 
-_DRIVER = None
+_PLAYWRIGHT = None
+_BROWSER = None
+_PAGE = None
 
 
-def _get_chromium_driver():
-    global _DRIVER
-    if _DRIVER is not None:
-        return _DRIVER
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.chrome.service import Service
+def _shutdown_playwright() -> None:
+    global _PAGE, _BROWSER, _PLAYWRIGHT
+    for resource, method in ((_PAGE, "close"), (_BROWSER, "close"), (_PLAYWRIGHT, "stop")):
+        if resource is not None:
+            try:
+                getattr(resource, method)()
+            except Exception:
+                pass
+    _PAGE = None
+    _BROWSER = None
+    _PLAYWRIGHT = None
 
-    options = Options()
+
+def _get_playwright_page():
+    global _PLAYWRIGHT, _BROWSER, _PAGE
+    if _PAGE is not None and not _PAGE.is_closed():
+        return _PAGE
+    from playwright.sync_api import sync_playwright
+
+    _PLAYWRIGHT = sync_playwright().start()
+    launch_kwargs: dict[str, object] = {
+        "headless": True,
+        "args": ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+    }
     if Path("/usr/bin/chromium").exists():
-        options.binary_location = "/usr/bin/chromium"
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    service = Service(executable_path="/usr/bin/chromedriver") if Path("/usr/bin/chromedriver").exists() else Service()
-    _DRIVER = webdriver.Chrome(service=service, options=options)
-    atexit.register(lambda: _DRIVER.quit() if _DRIVER else None)
-    return _DRIVER
+        launch_kwargs["executable_path"] = "/usr/bin/chromium"
+    _BROWSER = _PLAYWRIGHT.chromium.launch(**launch_kwargs)
+    _PAGE = _BROWSER.new_page()
+    atexit.register(_shutdown_playwright)
+    return _PAGE
 
 
 def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProcess[str]:
@@ -51,10 +64,10 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
         files_map[str(js_file.resolve())] = js_file.read_text(encoding="utf-8")
         files_map[str(js_file)] = files_map[str(js_file.resolve())]
 
-    driver = _get_chromium_driver()
-    driver.get("about:blank")
+    page = _get_playwright_page()
+    page.goto("about:blank")
     harness = r"""
-    const [scriptSrc, appDir, filesMap, done] = arguments;
+    ([scriptSrc, appDir, filesMap]) => new Promise((done) => {
     const logs = [];
     const errs = [];
     const origLog = console.log;
@@ -228,8 +241,9 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
             console.error = origErr;
         }
     })();
+    })
     """
-    res = driver.execute_async_script(harness, node_script, str(app_dir), files_map)
+    res = page.evaluate(harness, [node_script, str(app_dir), files_map])
     return subprocess.CompletedProcess(
         args=["node", "-e", node_script],
         returncode=int(res.get("returncode", 1)),

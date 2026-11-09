@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
-from selenium.webdriver.common.by import By
 
 from features.pages.base_page import BasePage
 
@@ -28,7 +27,7 @@ class TransactionsPage(BasePage):
         discount: str = "0.00",
     ) -> str:
         """Populate the Customer Sales Invoice form and return the generated `#custInvoiceNum`."""
-        self.driver.execute_script("window.isVatApplicable = arguments[0] === 'standard';", vat_treatment)
+        self.evaluate_script("window.isVatApplicable = arguments[0] === 'standard';", vat_treatment)
         self.fill_input("custDate", invoice_date)
         if supply_date:
             self.fill_input("custSupplyDate", supply_date)
@@ -36,7 +35,7 @@ class TransactionsPage(BasePage):
         self.fill_input("custEntity", customer_name)
         self.select_by_value_or_text("custRevenueAccount", revenue_account)
 
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const row = document.querySelector('#custLineItemsList .line-item-row');
             if (row) {
@@ -84,13 +83,13 @@ class TransactionsPage(BasePage):
     def preview_customer_einvoice(self) -> str:
         """Click `#previewInvoiceBtn` and return the rendered E-Invoice modal text."""
         self.click_id("previewInvoiceBtn")
-        self.wait_until(lambda d: d.find_element(By.ID, "invoiceModal").is_displayed())
+        self.wait_until(lambda p: p.locator("#invoiceModal").is_visible())
         return self.get_text_by_id("modalBody")
 
     def submit_customer_invoice(self) -> str | None:
         """Submit `#customerInvoiceForm`, post the entry, and return any alert text."""
         self.dismiss_modals_if_present()
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('customerInvoiceForm').requestSubmit();"
         )
         alert_text = self.accept_alert_if_present(timeout=3.0)
@@ -110,7 +109,7 @@ class TransactionsPage(BasePage):
         vat_rate: str = "5",
     ) -> str:
         """Populate the Tax Credit Note (`CRN-####`) form referencing `original_invoice_num`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             if (window.TaxCreditNotes && typeof window.TaxCreditNotes.populateOriginalInvoiceOptions === 'function') {
                 window.TaxCreditNotes.populateOriginalInvoiceOptions(arguments[0]);
@@ -164,13 +163,13 @@ class TransactionsPage(BasePage):
     def preview_tax_credit_note(self) -> str:
         """Click `#previewCrnBtn` and return the rendered Tax Credit Note modal text."""
         self.click_id("previewCrnBtn")
-        self.wait_until(lambda d: d.find_element(By.ID, "invoiceModal").is_displayed())
+        self.wait_until(lambda p: p.locator("#invoiceModal").is_visible())
         return self.get_text_by_id("modalBody")
 
     def submit_tax_credit_note(self) -> str | None:
         """Submit `#creditNoteForm` and return any alert text."""
         self.dismiss_modals_if_present()
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('creditNoteForm').requestSubmit();"
         )
         return self.accept_alert_if_present(timeout=3.0)
@@ -179,7 +178,7 @@ class TransactionsPage(BasePage):
 
     def generate_sample_supplier_invoice_png(self, sample_file_path: Path) -> None:
         """Render a high-contrast Supplier Invoice PNG image via HTML5 canvas and save to `sample_file_path`."""
-        b64_png = self.driver.execute_script(
+        b64_png = self.evaluate_script(
             """
             const c = document.createElement('canvas');
             c.width = 800;
@@ -243,16 +242,15 @@ class TransactionsPage(BasePage):
 
     def upload_and_analyze_supplier_document(self, sample_file_path: Path) -> None:
         """Upload a document to `#fileInput`, click `#processBtn`, and wait for `#resultCard`."""
-        def _send_file(driver):
-            file_input = driver.find_element(By.ID, "fileInput")
-            file_input.send_keys(str(sample_file_path))
+        def _send_file(p):
+            p.locator("#fileInput").set_input_files(str(sample_file_path))
             return True
 
         self.wait_until(_send_file)
-        self.wait_until(lambda d: d.find_element(By.ID, "processBtn").is_displayed())
+        self.wait_until(lambda p: p.locator("#processBtn").is_visible())
         self.click_id("processBtn")
         self.wait_until(
-            lambda d: d.find_element(By.ID, "resultCard").is_displayed(),
+            lambda p: p.locator("#resultCard").is_visible(),
             timeout=90.0,
         )
 
@@ -294,7 +292,7 @@ class TransactionsPage(BasePage):
         self.fill_input("quoteNum", quote_num)
         self.fill_input("quoteDate", quote_date)
         self.fill_input("quoteClient", client_name)
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const container = document.getElementById('quoteLineItems');
             if (container && typeof window.renderQuoteLineItem === 'function') {
@@ -330,7 +328,7 @@ class TransactionsPage(BasePage):
 
     def convert_quote_to_invoice(self, quote_num: str) -> str | None:
         """Convert a saved quote to a sales invoice and accept the alert."""
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const quotes = JSON.parse(localStorage.getItem('bookkeeping_quotes') || '[]');
             const found = quotes.find(q => q.quoteNum === arguments[0]);
@@ -344,7 +342,7 @@ class TransactionsPage(BasePage):
 
     def get_quotes_history_text(self) -> str:
         """Return the text of `#quotesHistoryBody`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderQuotesHistory === 'function') window.renderQuotesHistory();"
         )
         return self.get_text_by_id("quotesHistoryBody")
@@ -364,7 +362,7 @@ class TransactionsPage(BasePage):
         self.fill_input("poNum", po_num)
         self.fill_input("poDate", po_date)
         self.fill_input("poSupplier", supplier_name)
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const container = document.getElementById('poLineItems');
             if (container && typeof window.renderPOLineItem === 'function') {
@@ -400,7 +398,7 @@ class TransactionsPage(BasePage):
 
     def receive_po_goods(self, po_num: str) -> str | None:
         """Trigger Goods Receipt (`receivePOGoods`) for `po_num` and accept the confirmation alert."""
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const pos = JSON.parse(localStorage.getItem('bookkeeping_pos') || '[]');
             const found = pos.find(p => p.poNum === arguments[0]);
@@ -414,7 +412,7 @@ class TransactionsPage(BasePage):
 
     def convert_po_to_bill(self, po_num: str) -> str | None:
         """Perform 3-way match (`convertPOToBill`) for `po_num` and accept the confirmation alert."""
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const pos = JSON.parse(localStorage.getItem('bookkeeping_pos') || '[]');
             const found = pos.find(p => p.poNum === arguments[0]);
@@ -428,7 +426,7 @@ class TransactionsPage(BasePage):
 
     def get_po_history_text(self) -> str:
         """Return the text of `#poHistoryBody`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderPOHistory === 'function') window.renderPOHistory();"
         )
         return self.get_text_by_id("poHistoryBody")
@@ -443,17 +441,17 @@ class TransactionsPage(BasePage):
         vat_rate: str = "5",
     ) -> None:
         """Open the Bank Rule modal, populate the rule form, and save."""
-        self.driver.execute_script("window.openAddBankRuleModal();")
-        self.wait_until(lambda d: d.find_element(By.ID, "bankRuleModal").is_displayed())
+        self.evaluate_script("window.openAddBankRuleModal();")
+        self.wait_until(lambda p: p.locator("#bankRuleModal").is_visible())
         self.fill_input("ruleName", rule_name)
         self.fill_input("ruleCondition", keyword_condition)
         self.select_by_value_or_text("ruleAccount", target_account)
         self.fill_input("ruleVat", vat_rate)
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('bankRuleForm').requestSubmit();"
         )
         self.accept_alert_if_present(timeout=1.5)
-        self.wait_until(lambda d: not d.find_element(By.ID, "bankRuleModal").is_displayed())
+        self.wait_until(lambda p: not p.locator("#bankRuleModal").is_visible())
 
     def get_bank_rules_text(self) -> str:
         """Return the text of `#bankRulesBody`."""
@@ -461,9 +459,9 @@ class TransactionsPage(BasePage):
 
     def connect_mock_bank_feeds(self) -> None:
         """Trigger `window.connectMockBank()` and wait for simulated Plaid feed rows to render."""
-        self.driver.execute_script("window.connectMockBank();")
+        self.evaluate_script("window.connectMockBank();")
         self.wait_until(
-            lambda d: "Stripe Payout" in d.find_element(By.ID, "bankFeedsBody").text
+            lambda p: "Stripe Payout" in p.locator("#bankFeedsBody").inner_text()
         )
 
     def get_bank_feeds_text(self) -> str:
@@ -488,7 +486,7 @@ class TransactionsPage(BasePage):
         self.fill_input("recEntity", entity_name)
         self.fill_input("recAmount", amount)
         self.fill_input("recNextRunDate", next_run_date)
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('addRecurringForm').requestSubmit();"
         )
         self.accept_alert_if_present(timeout=1.5)

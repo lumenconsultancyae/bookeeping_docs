@@ -41,7 +41,6 @@ POLL_FREQUENCY_SECONDS = 0.1
 
 HEADLESS = os.environ.get("E2E_HEADLESS", "true").lower() not in ("0", "false", "no")
 CHROMIUM_BINARY = os.environ.get("CHROMIUM_BINARY", "/usr/bin/chromium")
-CHROMEDRIVER_BINARY = os.environ.get("CHROMEDRIVER_BINARY", "/usr/bin/chromedriver")
 
 ARTIFACTS_DIR = REPO_ROOT / "artifacts"
 SCREENSHOTS_DIR = Path(

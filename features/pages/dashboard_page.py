@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from selenium.webdriver.common.by import By
-
 from features.pages.base_page import BasePage
 
 
@@ -39,7 +37,7 @@ class DashboardPage(BasePage):
         """Return True if the `#cashFlowChart` canvas is visible and has non-zero dimensions."""
         return bool(
             self.wait_until(
-                lambda d: d.execute_script(
+                lambda _p: self.evaluate_script(
                     """
                     const c = document.getElementById('cashFlowChart');
                     return Boolean(c && c.offsetWidth > 0 && c.offsetHeight > 0);
@@ -50,9 +48,9 @@ class DashboardPage(BasePage):
 
     def open_expense_breakdown_modal(self) -> None:
         """Open the Total Expenses Breakdown modal from the Dashboard."""
-        self.driver.execute_script("window.openExpenseBreakdown();")
+        self.evaluate_script("window.openExpenseBreakdown();")
         self.wait_until(
-            lambda d: d.find_element(By.ID, "expenseBreakdownModal").is_displayed()
+            lambda p: p.locator("#expenseBreakdownModal").is_visible()
         )
 
     def get_expense_breakdown_total(self) -> str:
@@ -61,7 +59,7 @@ class DashboardPage(BasePage):
 
     def get_corp_tax_tracker_summary(self) -> dict[str, str]:
         """Return the live values displayed inside the Home Dashboard UAE Corporate Tax Tracker card."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "const el = document.getElementById('corpTaxTrackerCard'); if (el) el.scrollIntoView({ block: 'center' });"
         )
         return {
@@ -98,21 +96,21 @@ class DashboardPage(BasePage):
         eid_expiry: str,
     ) -> None:
         """Open `#addEmployeeModal`, fill employee and Visa/EID expiry dates, and submit."""
-        self.driver.execute_script("window.openAddEmployeeModal();")
-        self.wait_until(lambda d: d.find_element(By.ID, "addEmployeeModal").is_displayed())
+        self.evaluate_script("window.openAddEmployeeModal();")
+        self.wait_until(lambda p: p.locator("#addEmployeeModal").is_visible())
         self.fill_input("dirEmpName", name)
         self.fill_input("dirEmpPosition", position)
         self.fill_input("dirEmpBasic", basic_salary)
         self.fill_input("dirEmpVisaExpiry", visa_expiry)
         self.fill_input("dirEmpEmiratesIdExpiry", eid_expiry)
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.querySelector('#addEmployeeForm button[type=\"submit\"]').click();"
         )
         self.dismiss_any_alert()
 
     def get_compliance_reminder_summary(self) -> dict[str, str]:
         """Return the live status texts displayed in `#uaeComplianceReminderCard`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "const el = document.getElementById('uaeComplianceReminderCard'); if (el) el.scrollIntoView({ block: 'center' });"
         )
         return {
@@ -127,7 +125,7 @@ class DashboardPage(BasePage):
 
     def get_pdc_reminder_summary(self) -> dict[str, str]:
         """Return the live badge and list text inside `#pdcReminderCard` on the Dashboard."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "const el = document.getElementById('pdcReminderCard'); if (el) el.scrollIntoView({ block: 'center' });"
         )
         return {
@@ -141,7 +139,7 @@ class DashboardPage(BasePage):
 
     def get_sidebar_menu_icon_state(self, view_target: str) -> dict[str, object]:
         """Return collapsed state and SVG icon dimensions for a `.nav-item[data-target]` link."""
-        result = self.driver.execute_script(
+        result = self.evaluate_script(
             """
             const target = arguments[0];
             const isCollapsed = document.body.classList.contains('sidebar-collapsed');

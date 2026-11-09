@@ -25,28 +25,28 @@ class ReportsAndSettingsPage(BasePage):
 
     def get_income_statement_text(self) -> str:
         """Render and return the text of `#incomeStatementContainer`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderTrialBalance === 'function') window.renderTrialBalance();"
         )
         return self.get_text_by_id("incomeStatementContainer")
 
     def get_balance_sheet_text(self) -> str:
         """Render and return the text of `#balanceSheetContainer`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderTrialBalance === 'function') window.renderTrialBalance();"
         )
         return self.get_text_by_id("balanceSheetContainer")
 
     def get_cashflow_statement_text(self) -> str:
         """Render and return the text of `#cashflowContainer`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderTrialBalance === 'function') window.renderTrialBalance();"
         )
         return self.get_text_by_id("cashflowContainer")
 
     def get_equity_statement_text(self) -> str:
         """Render and return the text of `#equityStatementContainer`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderEquityStatement === 'function') window.renderEquityStatement();"
         )
         return self.get_text_by_id("equityStatementContainer")
@@ -55,7 +55,7 @@ class ReportsAndSettingsPage(BasePage):
 
     def get_vat_return_summary(self) -> dict[str, str]:
         """Render the VAT report and return Box 1, Box 9, Net VAT, and Box 14 values."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderTrialBalance === 'function') window.renderTrialBalance();"
         )
         return {
@@ -75,7 +75,7 @@ class ReportsAndSettingsPage(BasePage):
     def export_fta_audit_file(self) -> dict[str, str]:
         """Click `#btnExportFaf` in `#view-tax` and return the exported FTA Audit File metadata and CSV."""
         self.click_id("btnExportFaf")
-        result = self.driver.execute_script(
+        result = self.evaluate_script(
             """
             const last = window.__lastExportedFAF || {};
             const totals = (last.data && last.data.totals) || {};
@@ -94,7 +94,7 @@ class ReportsAndSettingsPage(BasePage):
 
     def get_corporate_tax_summary(self) -> dict[str, str]:
         """Render the Corporate Tax summary and return Net Profit, Add-Backs, Taxable Income, and Payable."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderTrialBalance === 'function') window.renderTrialBalance();"
         )
         return {
@@ -115,7 +115,7 @@ class ReportsAndSettingsPage(BasePage):
         """Select a budget month, set the budget input for `account_name`, and save budgets."""
         account_code = account_name.split()[0].strip()
         self.fill_input("budgetMonthFilter", month_yyyy_mm)
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             if (typeof window.renderBudgeting === 'function') window.renderBudgeting();
             const inputs = document.querySelectorAll('#budgetingContainer .budget-input');
@@ -140,7 +140,7 @@ class ReportsAndSettingsPage(BasePage):
 
     def get_cashflow_forecast_text(self) -> str:
         """Render and return the 90-day Cash Flow Forecast table text."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderCashflowForecast === 'function') window.renderCashflowForecast();"
         )
         return self.get_text_by_id("cashflowForecastContainer")
@@ -149,7 +149,7 @@ class ReportsAndSettingsPage(BasePage):
 
     def get_audit_log_text(self) -> str:
         """Render and return the text of `#auditLogBody`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "if (typeof window.renderAuditLog === 'function') window.renderAuditLog();"
         )
         return self.get_text_by_id("auditLogBody")
@@ -178,7 +178,7 @@ class ReportsAndSettingsPage(BasePage):
     ) -> str | None:
         """Configure Company Type and Small Business Relief toggle and save tax settings."""
         self.select_by_value_or_text("settingCompanyType", company_type)
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const cb = document.getElementById('settingSmallBusinessRelief');
             if (cb) cb.checked = Boolean(arguments[0]);
@@ -201,7 +201,7 @@ class ReportsAndSettingsPage(BasePage):
 
     def seed_unconverted_supplier_bill(self, invoice_num: str, supplier_name: str, total: str) -> None:
         """Insert a legacy supplier bill with no `currency` field into `bookkeeping_history_v2`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const raw = localStorage.getItem('bookkeeping_history_v2') || '[]';
             const history = JSON.parse(raw);
@@ -227,7 +227,7 @@ class ReportsAndSettingsPage(BasePage):
 
     def convert_legacy_supplier_bill_to_aed(self, invoice_num: str, currency_code: str) -> str:
         """Tick the legacy supplier bill in `#fxFixBody`, convert to AED, and return `#fxFixMessage`."""
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const check = document.getElementById('fxFix_fx_leg_' + arguments[0]);
             if (check) check.checked = true;

@@ -2,7 +2,7 @@
 
 ## 1. Prerequisites
 
-- **Target Host Environment**: Linux or macOS Docker host with Docker Engine (`>= 24.0`) and Docker Compose v2 (`docker compose`), plus Python `>= 3.11`, Chromium, and ChromeDriver for test execution.
+- **Target Host Environment**: Linux or macOS Docker host with Docker Engine (`>= 24.0`) and Docker Compose v2 (`docker compose`), plus Python `>= 3.11`, Playwright (`playwright>=1.40.0`), and Chromium for test execution.
 - **Network & Ports**:
   - Host port `9091/tcp` available for the Nginx web application (`bookkeeping-web`).
   - Host port `3000/tcp` available for the containerized `agy` AI prediction service (`bookkeeping-agy-ai` running `agy_service.py`).

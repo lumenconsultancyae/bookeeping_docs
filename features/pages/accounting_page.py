@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from selenium.webdriver.common.by import By
-
 from features.pages.base_page import BasePage
 
 
@@ -15,13 +13,13 @@ class AccountingPage(BasePage):
     def add_custom_account(self, code: str, name: str, account_type: str) -> None:
         """Open the Add Account modal, populate fields, and save the custom account."""
         self.click_id("btnAddAccount")
-        self.wait_until(lambda d: d.find_element(By.ID, "coaModal").is_displayed())
+        self.wait_until(lambda p: p.locator("#coaModal").is_visible())
         self.fill_input("coaCode", code)
         self.fill_input("coaName", name)
         self.select_by_value_or_text("coaType", account_type)
         self.click_id("btnSaveCoa")
         self.accept_alert_if_present(timeout=1.5)
-        self.wait_until(lambda d: not d.find_element(By.ID, "coaModal").is_displayed())
+        self.wait_until(lambda p: not p.locator("#coaModal").is_visible())
 
     def get_coa_table_text(self) -> str:
         """Return the visible text of `#coaBody`."""
@@ -48,7 +46,7 @@ class AccountingPage(BasePage):
         self.fill_input("journalCr", credit_account)
         self.fill_input("journalAmount", amount)
 
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const radios = document.querySelectorAll('input[name="journalVatToggle"]');
             radios.forEach(r => {
@@ -71,13 +69,13 @@ class AccountingPage(BasePage):
         """Click Preview Posting and return the preview table text."""
         self.click_id("btnPreviewJournal")
         self.wait_until(
-            lambda d: d.find_element(By.ID, "journalPreviewContainer").is_displayed()
+            lambda p: p.locator("#journalPreviewContainer").is_visible()
         )
         return self.get_text_by_id("journalPreviewBody")
 
     def submit_journal_entry(self) -> str | None:
         """Submit the manual journal entry form, post the entry, and return any alert message."""
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('journalForm').requestSubmit();"
         )
         alert_text = self.accept_alert_if_present(timeout=3.0)
@@ -98,7 +96,7 @@ class AccountingPage(BasePage):
 
     def attempt_delete_ledger_entry_by_ref(self, ref_or_desc: str) -> str | None:
         """Attempt to delete a ledger entry matching `ref_or_desc` and return any alert text."""
-        entry_id = self.driver.execute_script(
+        entry_id = self.evaluate_script(
             """
             const history = JSON.parse(localStorage.getItem('bookkeeping_history_v2') || '[]');
             const found = history.find(h =>
@@ -111,7 +109,7 @@ class AccountingPage(BasePage):
             ref_or_desc,
         )
         if entry_id is not None:
-            self.driver.execute_script("window.deleteEntry(arguments[0]);", entry_id)
+            self.evaluate_script("window.deleteEntry(arguments[0]);", entry_id)
         return self.accept_alert_if_present(timeout=3.0)
 
     # --- Accruals (`#view-accrual`) ---
@@ -135,7 +133,7 @@ class AccountingPage(BasePage):
         self.fill_input("accrualAmount", total_amount)
         if schedule_mode == "monthly":
             self.fill_input("accrualLife", life_months)
-        self.driver.execute_script(
+        self.evaluate_script(
             "document.getElementById('addAccrualForm').requestSubmit();"
         )
         self.accept_alert_if_present(timeout=1.5)
@@ -148,7 +146,7 @@ class AccountingPage(BasePage):
         usage_note: str,
     ) -> None:
         """Open `#recordAccrualUsageModal` for `description`, populate drawdown fields, and save."""
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const accruals = JSON.parse(localStorage.getItem('bookkeeping_accruals') || '[]');
             const found = accruals.find(a => a.description === arguments[0]);
@@ -159,7 +157,7 @@ class AccountingPage(BasePage):
             description,
         )
         self.wait_until(
-            lambda d: d.find_element(By.ID, "recordAccrualUsageModal").is_displayed()
+            lambda p: p.locator("#recordAccrualUsageModal").is_visible()
         )
         self.fill_input("recordUsageDate", usage_date)
         self.fill_input("recordUsageAmount", usage_amount)
@@ -167,7 +165,7 @@ class AccountingPage(BasePage):
         self.click_id("btnSaveAccrualUsage")
         self.accept_alert_if_present(timeout=1.5)
         self.wait_until(
-            lambda d: not d.find_element(By.ID, "recordAccrualUsageModal").is_displayed()
+            lambda p: not p.locator("#recordAccrualUsageModal").is_visible()
         )
 
     def get_calculated_monthly_accrual(self) -> str:
@@ -180,7 +178,7 @@ class AccountingPage(BasePage):
 
     def open_accrual_schedule_modal(self, description: str) -> str:
         """Open the amortization schedule modal for `description` and return its table text."""
-        self.driver.execute_script(
+        self.evaluate_script(
             """
             const accruals = JSON.parse(localStorage.getItem('bookkeeping_accruals') || '[]');
             const found = accruals.find(a => a.description === arguments[0]);
@@ -191,7 +189,7 @@ class AccountingPage(BasePage):
             description,
         )
         self.wait_until(
-            lambda d: d.find_element(By.ID, "accrualScheduleModal").is_displayed()
+            lambda p: p.locator("#accrualScheduleModal").is_visible()
         )
         return self.get_text_by_id("accrualScheduleBody")
 
@@ -200,7 +198,7 @@ class AccountingPage(BasePage):
     def load_statement_of_account(self, mode_or_entity: str) -> None:
         """Load the Statement of Account for `'ALL_AR'`, `'ALL_AP'`, or a specific entity name."""
         if mode_or_entity in ("ALL_AR", "ALL_AP"):
-            self.driver.execute_script(
+            self.evaluate_script(
                 "window.loadStatementOfAccount(arguments[0]);", mode_or_entity
             )
         else:

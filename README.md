@@ -40,7 +40,7 @@ bookeeping_docs/
 │   ├── test_react_migration.py                      # React 18 SPA runtime, hooks, query key cache, URL router & shell tests
 │   └── test_whatsapp_workflows.py                   # WhatsApp EN/AR invoice share, +971 phone, TRN OCR & executive print tests
 ├── behave.ini                                       # Behave BDD runner configuration
-├── requirements.txt                                 # Python BDD & WebDriver dependencies
+├── requirements.txt                                 # Python BDD & Playwright browser dependencies
 ├── docs/
 │   ├── UX_STYLE_IMPROVEMENTS.md                     # UI/UX style audit, unified palette & before/after gallery
 │   ├── screenshots/ux_improvements/                 # Initial (before) & next (after) UI state screenshots
@@ -92,7 +92,7 @@ bookeeping_docs/
 | :--- | :--- | :--- |
 | [`docs/product/user-guide-and-release-notes.md`](docs/product/user-guide-and-release-notes.md) | Customer / Product | End-user workflow guide covering Dashboard, Sales, Credit Notes, Direct Expenses, Procurement, Inventory, Payroll, Tax Filing (VAT 201 & FAF), and Release Notes. |
 | [`docs/product/prd-product-requirements.md`](docs/product/prd-product-requirements.md) | Product | Product Requirements Document detailing target personas, delivered functional capabilities, and target roadmap scope. |
-| [`docs/technical/architecture-and-execution-flow.md`](docs/technical/architecture-and-execution-flow.md) | Engineering | Deep-dive technical documentation covering all 6 runtime phases, double-entry ledger math, multi-tenant storage, IndexedDB attachments, and PINT-AE XML / FAF / SIF schemas. |
+| [`docs/technical/architecture-and-execution-flow.md`](docs/technical/architecture-and-execution-flow.md) | Engineering | Deep-dive technical documentation covering all 6 runtime phases, double-entry ledger math, multi-tenant online-only cloud storage, trial/auth endpoints, and PINT-AE XML / FAF / SIF schemas. |
 | [`docs/technical/sdd-system-design.md`](docs/technical/sdd-system-design.md) | Engineering | Software Design Document covering modular subsystem boundaries, resolved architecture, and target cloud persistence roadmap. |
 | [`docs/technical/operational-runbook.md`](docs/technical/operational-runbook.md) | Operations | Local and production (AWS EC2 + Cloudflare) deployment runbook with prerequisites, sequential execution commands, verification signals, and rollback steps. |
 | [`docs/diagrams/system-architecture.drawio`](docs/diagrams/system-architecture.drawio) | Architecture Diagram | Normalized Draw.io system architecture diagram across Browser SPA, Cloudflare Edge (`functions/api/[[path]].js`), Nginx Proxy (`bookkeeping-web`), and `agy-ai` (`bookkeeping-agy-ai`) services. |
@@ -105,9 +105,9 @@ bookeeping_docs/
 
 ### Prerequisites
 - Docker Engine (`>= 24.0`) and Docker Compose v2 (`docker compose`)
-- Python 3.11+ with `behave` and `selenium` installed (`pip install -r requirements.txt`)
+- Python 3.11+ with `behave` and `playwright` installed (`pip install -r requirements.txt`)
 - Node.js (`>= 18`) for behavioral JavaScript module execution tests
-- Chromium (`chromium`) and ChromeDriver (`chromedriver`)
+- Chromium (`chromium`)
 
 ### 1. Start the Local Docker Compose Stack (`bookkeeping-web` + `bookkeeping-agy-ai`)
 ```bash

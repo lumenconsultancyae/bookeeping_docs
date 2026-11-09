@@ -69,7 +69,7 @@ def step_open_unauthenticated_root(context) -> None:
 
 @then('the browser should redirect to the "{expected_path}" entrypoint')
 def step_verify_redirect_to_welcome(context, expected_path: str) -> None:
-    current_url = context.driver.current_url
+    current_url = context.page.url
     assert expected_path in current_url, (
         f"Expected browser URL to contain '{expected_path}', got '{current_url}'"
     )
@@ -121,14 +121,14 @@ def step_verify_sign_in_error(context, expected_error: str) -> None:
 @when("the visitor toggles the sign-in password visibility button and checks Remember me")
 def step_toggle_signin_password_and_remember_me(context) -> None:
     context.base_page.click_id("btnToggleSignInPassword")
-    context.driver.execute_script(
+    context.base_page.evaluate_script(
         "const cb = document.getElementById('signInRememberMe'); if (cb && !cb.checked) cb.click();"
     )
 
 
 @then('the sign-in password input type should be "{expected_type}" and Remember me should be checked')
 def step_verify_signin_password_type_and_remember(context, expected_type: str) -> None:
-    state = context.driver.execute_script(
+    state = context.base_page.evaluate_script(
         "return {"
         "  type: document.getElementById('signInPassword').type,"
         "  checked: Boolean(document.getElementById('signInRememberMe').checked),"
@@ -144,12 +144,12 @@ def step_verify_signin_password_type_and_remember(context, expected_type: str) -
 def step_reset_locked_password_via_email(context, new_password: str) -> None:
     context.base_page.click_id("btnOpenResetFromLock")
     context.base_page.wait_until(
-        lambda d: d.find_element("id", "resetPasswordModal").is_displayed()
+        lambda p: p.locator("#resetPasswordModal").is_visible()
     )
     context.base_page.fill_input("resetEmail", context.registered_email)
     context.base_page.click_id("btnSendResetCode")
     code = context.base_page.wait_until(
-        lambda d: d.find_element("id", "resetEmailSentNotice").get_attribute("data-reset-code")
+        lambda p: p.locator("#resetEmailSentNotice").get_attribute("data-reset-code")
     )
     assert code and len(code) == 6, f"Expected 6-digit reset code dispatched to email, got '{code}'"
     context.base_page.fill_input("resetCode", code)
@@ -157,7 +157,7 @@ def step_reset_locked_password_via_email(context, new_password: str) -> None:
     context.base_page.fill_input("resetConfirmPassword", new_password)
     context.base_page.click_id("btnResetPasswordSubmit")
     context.base_page.wait_until(
-        lambda d: d.find_element("id", "signInModal").is_displayed()
+        lambda p: p.locator("#signInModal").is_visible()
     )
 
 
