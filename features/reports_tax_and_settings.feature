@@ -46,7 +46,7 @@ Feature: Financial Statements, UAE VAT 201, Corporate Tax, Budgeting, Forecast, 
     When the user posts a balanced journal entry of "500.00" AED from "6000 Office Supplies" to "1100 Bank Account" dated "2026-09-01"
     And the user navigates to the "Settings" view
     And the user saves company letterhead settings for "Lumen Advisory FZ-LLC" with TRN "100334455667703" and IBAN "AE070331234567890123456"
-    And the user saves UAE tax settings for company type "Mainland" with Small Business Relief enabled
+    And the user saves UAE tax settings for company type "Non-Qualifying Free Zone" with Small Business Relief enabled
     And the user adds or updates the currency exchange rate for "EUR" to "4.0250" AED
     Then the Currency Exchange Rates table should list "EUR" with rate "4.025"
     When the user navigates to the "Audit Log" view

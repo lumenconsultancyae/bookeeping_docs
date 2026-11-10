@@ -174,6 +174,17 @@ def step_save_tax_settings(context, company_type: str) -> None:
     )
 
 
+@when(
+    'the user saves UAE tax settings for company type "{company_type}" with Small Business Relief disabled'
+)
+def step_save_tax_settings_disabled(context, company_type: str) -> None:
+    context.created_resources.append(("settings", "bookkeeping_settings"))
+    context.reports_page.save_tax_settings(
+        company_type=company_type,
+        small_business_relief=False,
+    )
+
+
 @when('the user adds or updates the currency exchange rate for "{code}" to "{rate}" AED')
 def step_add_currency_rate(context, code: str, rate: str) -> None:
     context.created_resources.append(("currency", code))

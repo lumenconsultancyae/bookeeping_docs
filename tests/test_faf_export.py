@@ -427,34 +427,48 @@ assert.strictEqual(ctSbrExceeded.sbrDisqualifiedExceededCap, true);
 assert.strictEqual(ctSbrExceeded.ctPayable, 38250);
 assert.strictEqual(ctSbrExceeded.regimeCode, 'above_threshold');
 
-const ctQfzp = CorporateTaxTracker.calculate({
-    totalRevenue: 1500000,
-    totalExpenses: 500000,
-    ctAddBacks: 0,
-    companyType: 'Qualifying Free Zone',
-    smallBusinessRelief: false
-});
+const ctQfzp = CorporateTaxTracker.calculate({ totalRevenue: 1500000, totalExpenses: 500000, ctAddBacks: 0, companyType: 'Qualifying Free Zone', smallBusinessRelief: false });
 assert.strictEqual(ctQfzp.isQualifyingFreeZone, true);
+assert.strictEqual(ctQfzp.isNonQualifyingFreeZone, false);
 assert.strictEqual(ctQfzp.ctPayable, 0);
 assert.strictEqual(ctQfzp.regimeCode, 'qualifying_free_zone');
+
+const ctNqfzpAbove = CorporateTaxTracker.calculate({ totalRevenue: 600000, totalExpenses: 100000, ctAddBacks: 25000, companyType: 'Non-Qualifying Free Zone', smallBusinessRelief: false });
+assert.strictEqual(ctNqfzpAbove.isQualifyingFreeZone, false);
+assert.strictEqual(ctNqfzpAbove.isNonQualifyingFreeZone, true);
+assert.strictEqual(ctNqfzpAbove.taxableIncome, 525000);
+assert.strictEqual(ctNqfzpAbove.taxableAboveThreshold, 150000);
+assert.strictEqual(ctNqfzpAbove.ctPayable, 13500);
+assert.strictEqual(ctNqfzpAbove.regimeCode, 'above_threshold');
+
+const ctNqfzpSbr = CorporateTaxTracker.calculate({ totalRevenue: 900000, totalExpenses: 300000, ctAddBacks: 0, companyType: 'Non-Qualifying Free Zone', smallBusinessRelief: true });
+assert.strictEqual(ctNqfzpSbr.isQualifyingFreeZone, false);
+assert.strictEqual(ctNqfzpSbr.isNonQualifyingFreeZone, true);
+assert.strictEqual(ctNqfzpSbr.sbrElectiveActive, true);
+assert.strictEqual(ctNqfzpSbr.ctPayable, 0);
+assert.strictEqual(ctNqfzpSbr.regimeCode, 'sbr_active');
 
 const elements = {};
 global.document = {
     getElementById: (id) => {
-        if (!elements[id]) elements[id] = { textContent: '', className: '', style: {} };
+        if (!elements[id]) elements[id] = { textContent: '', innerHTML: '', className: '', style: {}, setAttribute: (k, v) => { elements[id][k] = v; } };
         return elements[id];
     }
 };
-CorporateTaxTracker.renderWidget({
-    totalRevenue: 600000,
-    totalExpenses: 100000,
-    ctAddBacks: 25000,
-    companyType: 'Mainland',
-    smallBusinessRelief: false
-}, (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+TaxCreditNotes.renderCreditNotesHistory();
+assert(elements['creditNotesHistoryBody'].innerHTML.includes('05/10/26') && elements['creditNotesHistoryBody'].innerHTML.includes('06/10/26'));
+assert(!elements['creditNotesHistoryBody'].innerHTML.includes('2026-10-05') && !elements['creditNotesHistoryBody'].innerHTML.includes('2026-10-06'));
+
+const fmtNum = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+CorporateTaxTracker.renderWidget({ totalRevenue: 600000, totalExpenses: 100000, ctAddBacks: 25000, companyType: 'Mainland', smallBusinessRelief: false }, fmtNum);
 assert.strictEqual(elements['ctTrackerTaxableIncome'].textContent, '525,000.00');
 assert.strictEqual(elements['ctTrackerEstimatedTax'].textContent, '13,500.00');
 assert.strictEqual(elements['ctTrackerThresholdBar'].style.width, '100.0%');
+assert.strictEqual(elements['ctTrackerThresholdStatus'].textContent, 'AED 150,000.00 taxable at 9%');
+
+CorporateTaxTracker.renderWidget({ totalRevenue: 600000, totalExpenses: 100000, ctAddBacks: 25000, companyType: 'Non-Qualifying Free Zone', smallBusinessRelief: false }, fmtNum);
+assert.strictEqual(elements['ctTrackerStatusBadge']['data-company-type'], 'Non-Qualifying Free Zone');
+assert.strictEqual(elements['ctTrackerThresholdStatus'].textContent, 'Non-Qualifying Free Zone · AED 150,000.00 taxable at 9%');
 
 console.log(JSON.stringify({ status: 'ok' }));
 """
@@ -491,6 +505,12 @@ class CorporateTaxTrackerUnitTests(unittest.TestCase):
             "ctTrackerAddBacks",
         ):
             self.assertIn(f'id="{dom_id}"', index_html)
+        for company_type_opt in (
+            '<option value="Mainland">Mainland</option>',
+            '<option value="Qualifying Free Zone">Qualifying Free Zone</option>',
+            '<option value="Non-Qualifying Free Zone">Non-Qualifying Free Zone</option>',
+        ):
+            self.assertIn(company_type_opt, index_html)
 
     def test_corp_tax_tracker_is_wired_to_dashboard_kpis_and_trial_balance(self) -> None:
         tracker_js_path = APP_DIR / "corp-tax-tracker.js"
