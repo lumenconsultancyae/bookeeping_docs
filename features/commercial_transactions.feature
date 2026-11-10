@@ -25,7 +25,7 @@ Feature: Commercial Transactions, AI Document Extraction, Quotes, Purchase Order
     And the user fills an Art. 59 customer invoice for "Al Masa Advisory LLC" issued "2026-10-10" supplied "2026-10-05" with item "VAT Compliance Audit" quantity "2" at rate "1000.00" AED discount "200.00" AED and "standard" VAT
     Then the customer invoice summary should show discount "200.00", subtotal "1,800.00", VAT "90.00", and total "1,890.00"
     When the user previews the customer E-Invoice
-    Then the E-Invoice preview modal should display Invoice Date "2026-10-10", Terms, Due Date, Discount, VAT Rate, and VAT Amount
+    Then the E-Invoice preview modal should display Invoice Date "10/10/26", Terms, Due Date, Discount, VAT Rate, and VAT Amount
     When the user submits the customer invoice to the ledger
     And the user issues a Tax Credit Note against the last invoice with reason "Agreed Price / Discount Adjustment", item "Partial Scope Credit", quantity "1", rate "500.00" AED, discount "50.00" AED, and "5" percent VAT
     Then the Tax Credit Note summary should show discount "50.00", subtotal "450.00", VAT "22.50", and total "472.50"

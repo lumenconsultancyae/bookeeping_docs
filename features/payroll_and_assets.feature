@@ -23,7 +23,7 @@ Feature: Employee Directory, UAE WPS Payroll, Gratuity (EOSB), and Fixed Assets
     Then the filtered timesheets section for "2026-10" should list "Tariq Al Mansoori" and exclude "Layla Al Qasimi"
     When the user filters the saved timesheets by employee "All Employees"
     When the user opens the payslip for "Tariq Al Mansoori" in period "2026-10"
-    Then the professional payslip document should display employee "Tariq Al Mansoori", designation "Principal Systems Architect", starting date "2024-01-15", company "Al Noor Precision Engineering LLC", address "Plot 42, Dubai Industrial City, Dubai, UAE", contact number "+971 4 885 9200", and the company logo
+    Then the professional payslip document should display employee "Tariq Al Mansoori", designation "Principal Systems Architect", starting date "15/01/24", company "Al Noor Precision Engineering LLC", address "Plot 42, Dubai Industrial City, Dubai, UAE", contact number "+971 4 885 9200", and the company logo
     And the EOSB Summary should display an accrued gratuity balance for "Tariq Al Mansoori"
     And the WPS SIF preview should contain an "EDR" record and a MOHRE "SCR" control record for "102026"
     When the user simulates statutory gratuity for basic salary "12000" AED, total salary "16000" AED, hired "2019-11-07", ending "2026-11-05" with "0" unpaid leave days

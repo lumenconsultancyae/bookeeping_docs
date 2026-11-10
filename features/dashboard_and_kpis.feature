@@ -104,6 +104,9 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     When the administrator opens the customer books for the registered company from the Super-Admin Console
     And the user navigates to the "Expenses" view
     Then the Expense History table should list payee "DEWA Utility" with VAT "20.00" and total "420.00"
+    When the administrator signs in to the Super-Admin Console with email "admin@lumenconsultancy.net" and password "LumenAdmin2026"
+    And the administrator deletes the registered company from the Super-Admin Console
+    Then the Super-Admin Console should no longer list the registered company
 
   @smoke @corp_tax_tracker
   Scenario: Live 9% UAE Corporate Tax and Small Business Relief tracker updates on the Home Dashboard
@@ -112,6 +115,8 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     And the user selects the dashboard period year "2026" and month "7"
     Then the dashboard UAE Corporate Tax tracker should show regime status "0% Bracket" and estimated tax "0.00"
     When the user posts a balanced journal entry of "300000.00" AED from "1100 Bank Account" to "4100 Service Revenue" dated "2026-08-15"
+    And the user navigates to the "Settings" view
+    And the user saves UAE tax settings for company type "Non-Qualifying Free Zone" with Small Business Relief disabled
     And the user navigates to the "Dashboard" view
     And the user selects the dashboard period year "2026" and month "7"
     Then the dashboard UAE Corporate Tax tracker should show regime status "9% Standard Bracket" and estimated tax "11,250.00"

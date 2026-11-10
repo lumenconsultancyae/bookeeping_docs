@@ -252,3 +252,22 @@ class ExpensesAndAdminPage(BasePage):
             company_name,
         )
         return self.get_text_by_id("adminAccountsBody")
+
+    def delete_company_in_admin(self, company_name: str) -> str:
+        """Click `[data-delete-account]` twice for `company_name` in `/admin` and return updated table text."""
+        for _ in range(2):
+            self.evaluate_script(
+                """
+                const rows = Array.from(document.querySelectorAll('#adminAccountsBody tr'));
+                const row = rows.find(r => r.innerText.includes(arguments[0]));
+                if (row) {
+                    const btn = row.querySelector('[data-delete-account]');
+                    if (btn) btn.click();
+                }
+                """,
+                company_name,
+            )
+        self.wait_until(
+            lambda p: company_name not in p.locator("#adminAccountsBody").inner_text()
+        )
+        return self.get_text_by_id("adminAccountsBody")

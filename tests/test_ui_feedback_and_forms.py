@@ -330,6 +330,89 @@ class InlineFormValidationComponentTests(unittest.TestCase):
         self.assertTrue(result["numCleared"])
         self.assertEqual(result["supp"], "Supplier name is too short.")
 
+    def test_enhance_date_inputs_formats_display_and_normalizes_assigned_dmy_values(self) -> None:
+        result = self.dom.run("""
+            const wrap = document.createElement('div');
+            wrap.innerHTML = '<input type="date" id="testDateInput">';
+            document.body.appendChild(wrap);
+            window.LumenUI.enhanceDateInputs(wrap);
+            const inp = document.getElementById('testDateInput');
+            const emptyDisp = inp.getAttribute('data-date-display');
+            inp.value = '2026-11-10';
+            const isoDisp = inp.getAttribute('data-date-display');
+            inp.value = '15/08/26';
+            const normVal = inp.value;
+            const normDisp = inp.getAttribute('data-date-display');
+            done({
+                hasExport: typeof window.LumenUI.enhanceDateInputs === 'function' && typeof window.enhanceDateInputs === 'function',
+                emptyDisp,
+                isoDisp,
+                normVal,
+                normDisp,
+            });
+        """)
+        self.assertTrue(result["hasExport"])
+        self.assertEqual(result["emptyDisp"], "dd/mm/yy")
+        self.assertEqual(result["isoDisp"], "10/11/26")
+        self.assertEqual(result["normVal"], "2026-08-15")
+        self.assertEqual(result["normDisp"], "15/08/26")
+
+    def test_journal_date_filter_sorts_chronologically_and_admin_confirm_delete_resets_on_escape(self) -> None:
+        from tests.js_runner import run_node_script
+        import json
+        from pathlib import Path
+        web_dir = Path(__file__).resolve().parents[2] / "bookkeeping-tool"
+        script = f"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const elements = {{}};
+        const makeEl = (id) => ({{
+            id, value: '', innerHTML: '', textContent: '', style: {{}}, dataset: {{}}, children: [], options: [],
+            appendChild(c) {{ this.children.push(c); if (c.tagName === 'OPTION') this.options.push(c); }},
+            addEventListener() {{}}, querySelector() {{ return null; }}, querySelectorAll() {{ return []; }},
+            setAttribute(k, v) {{ this[k] = v; if (k.startsWith('data-')) this.dataset.confirmDelete = v; }},
+            removeAttribute(k) {{ delete this[k]; if (k === 'data-confirm-delete') delete this.dataset.confirmDelete; }}
+        }});
+        ['filterDate', 'historyTable', 'emptyHistory', 'historyBody'].forEach(id => {{ elements[id] = makeEl(id); }});
+        const ctx = vm.createContext({{
+            window: {{
+                formatDateDdMmYy: (v) => String(v || '').replace(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}}).*/, (_, y, m, d) => `${{d}}/${{m}}/${{y.slice(-2)}}`),
+                formatCurrency: (n) => String(n)
+            }},
+            document: {{
+                getElementById: (id) => elements[id] || null,
+                querySelectorAll: () => [],
+                createElement: (tag) => makeEl(tag.toUpperCase())
+            }},
+            historyTable: elements.historyTable, emptyHistory: elements.emptyHistory, historyBody: elements.historyBody,
+            isLocked: () => false, safeNum: (n) => String(n || '0.00'),
+            localStorage: {{ getItem: () => null, setItem: () => {{}} }},
+            getHistory: () => [
+                {{ status: 'posted', date: '2026-02-05', description: 'Feb', account: '4100', subtotal: 100, tax: 0, total: 100, type: 'customer' }},
+                {{ status: 'posted', date: '2026-01-25', description: 'Jan', account: '4100', subtotal: 100, tax: 0, total: 100, type: 'customer' }},
+                {{ status: 'posted', date: '2026-10-12', description: 'Oct', account: '4100', subtotal: 100, tax: 0, total: 100, type: 'customer' }}
+            ],
+            CHART_OF_ACCOUNTS: [], escHtml: (s) => String(s || ''), formatCurrency: (n) => String(n),
+            Set, Array, Object, String, Number, Math, parseFloat, isNaN, JSON
+        }});
+        ctx.window.document = ctx.document;
+        vm.runInContext(fs.readFileSync({json.dumps(str(web_dir / "app-journals-and-coa.js"))}, 'utf8'), ctx);
+        vm.runInContext('loadHistory();', ctx);
+        const dateOptions = Array.from(elements.filterDate.innerHTML.matchAll(/value="([^"]+)"/g)).map(m => m[1]);
+        const adminSrc = fs.readFileSync({json.dumps(str(web_dir / "admin.js"))}, 'utf8');
+        console.log(JSON.stringify({{
+            dateOptions,
+            hasResetConfirm: adminSrc.includes('function resetConfirmDelete(') && adminSrc.includes("e.key === 'Escape'"),
+            hasConfirmAria: adminSrc.includes('Confirm delete user ')
+        }}));
+        """
+        proc = run_node_script(script, web_dir)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(out["dateOptions"], ["25/01/26", "05/02/26", "12/10/26"])
+        self.assertTrue(out["hasResetConfirm"])
+        self.assertTrue(out["hasConfirmAria"])
+
 
 if __name__ == "__main__":
     unittest.main()

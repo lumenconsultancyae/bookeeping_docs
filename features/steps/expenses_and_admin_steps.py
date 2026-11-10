@@ -266,6 +266,21 @@ def step_admin_opens_customer_books(context) -> None:
     )
 
 
+@when("the administrator deletes the registered company from the Super-Admin Console")
+def step_admin_deletes_registered_company(context) -> None:
+    context.updated_admin_table = context.expenses_admin_page.delete_company_in_admin(
+        context.registered_company_name
+    )
+
+
+@then("the Super-Admin Console should no longer list the registered company")
+def step_verify_admin_deleted_registered_company(context) -> None:
+    table_text = getattr(context, "updated_admin_table", "")
+    assert context.registered_company_name not in table_text, (
+        f"Expected '{context.registered_company_name}' to be removed from /admin table, got:\n{table_text[:500]}"
+    )
+
+
 @then("physical localStorage should contain only UI configuration keys")
 def step_verify_local_config_isolation(context) -> None:
     keys = context.expenses_admin_page.get_physical_local_storage_keys()

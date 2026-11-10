@@ -180,7 +180,7 @@ class PayrollAndAssetsPage(BasePage):
             "text": doc_el.inner_text(),
             "html": doc_el.inner_html(),
         }
-        self.page.locator("#modalFooter .btn-secondary").click()
+        self.page.locator("#modalFooter .btn-secondary").evaluate("el => el.click()")
         return result
 
     # --- Fixed Assets (`#view-assets`) ---

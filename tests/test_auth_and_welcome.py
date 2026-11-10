@@ -177,6 +177,21 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
             susp_chg = repo.process_trial_renewal("lock@co.ae")
             self.assertEqual((susp_chg.get("ok"), susp_chg.get("error")), (False, "Account is suspended."))
 
+            # Owner account deletion via _deleted: True in mutate_scoped_state must permanently purge account, profiles, profile keys, and attachments
+            repo.mutate_state({"lumen_profiles": json.dumps([{"id": "prof-lock", "accountId": "acc-lock"}, {"id": "prof-sec", "accountId": "acc-sec"}])})
+            repo.put_attachments({"prof-lock::att-1": "data:image/png;base64,AAA", "prof-sec::att-2": "data:image/png;base64,BBB"}, account_id="owner")
+            repo.mutate_scoped_state("owner", {"lumen_accounts": json.dumps({"acc-lock": {"_deleted": True}}), "lumen_profiles": json.dumps([{"id": "prof-lock", "accountId": "acc-lock", "_deleted": True}]), "profile:prof-lock::bookkeeping_history_v2": "[]"})
+            owner_after_del = repo.get_scoped_state("owner")
+            self.assertNotIn("acc-lock", json.loads(owner_after_del.get("lumen_accounts") or "{}"))
+            self.assertEqual([p for p in json.loads(owner_after_del.get("lumen_profiles") or "[]") if p.get("id") == "prof-lock"], [])
+            self.assertNotIn("profile:prof-lock::bookkeeping_history_v2", owner_after_del)
+            self.assertIsNone(repo.get_attachment("prof-lock::att-1", account_id="owner"))
+            self.assertEqual(repo.verify_login("lock@co.ae", "NewPass2026").get("ok"), False)
+            repo.mutate_scoped_state("acc-lock", {"lumen_accounts": json.dumps({"acc-lock": {"email": "lock@co.ae", "autoRenew": False}})})
+            self.assertNotIn("acc-lock", json.loads(repo.get_scoped_state("owner").get("lumen_accounts") or "{}"))
+            repo.mutate_scoped_state("acc-sec", {"lumen_profiles": json.dumps([{"id": "prof-sec", "accountId": "acc-sec", "_deleted": True}]), "profile:prof-sec::bookkeeping_history_v2": "[]"})
+            self.assertIsNone(repo.get_attachment("prof-sec::att-2", account_id="owner"))
+
 
 class BehavioralAuthTenantAndEdgeProxyTests(unittest.TestCase):
     """Execute `plan-access.js`, `profiles-storage.js`, `auth.js`, and `functions/api/[[path]].js` in runtime."""
@@ -320,6 +335,12 @@ return (async () => {
     await Auth.changeAdminPassword('LumenAdmin2026', 'LumenAdmin2026');
     assert.strictEqual(Profiles.approvePlanRequest(reg.accountId, 'advance'), true);
     assert.strictEqual(Profiles.findAccountByEmail('tenant1@example.com').plan, 'advance');
+    assert.strictEqual(typeof Profiles.formatDateDdMmYy, 'function'); assert.strictEqual(typeof Profiles.formatDateTimeDdMmYy, 'function');
+    assert.strictEqual(Profiles.formatDateDdMmYy('2026-11-10'), '10/11/26'); assert.strictEqual(Profiles.formatDateDdMmYy('2026-11-10T14:30:00Z'), '10/11/26');
+    assert.strictEqual(Profiles.formatDateDdMmYy('10/11/2026'), '10/11/26'); assert.strictEqual(Profiles.formatDateTimeDdMmYy(new Date(2026, 10, 10, 14, 5)), '10/11/26, 14:05');
+    const extraProf = Profiles.create('Secondary Co'); Profiles.seedData(extraProf.id, 'bookkeeping_history_v2', [{ id: 'sec-1' }]); Profiles.remove(extraProf.id);
+    assert.strictEqual(Profiles.list().some((p) => p.id === extraProf.id), false);
+    assert.strictEqual(Profiles.deleteAccountAdmin(trialReg.accountId), true); assert.strictEqual(Profiles.findAccountByEmail('trial@co.ae'), null);
 
     const edgeSrc = fs.readFileSync(path.join(appDir, 'functions', 'api', '[[path]].js'), 'utf8')
         .replace(/export\s+async\s+function\s+onRequest/g, 'async function onRequest') + '\nmodule.exports = { onRequest };';
@@ -365,6 +386,10 @@ return (async () => {
                     else if (this._sql.includes('DELETE FROM app_state WHERE key =')) d1Tables.app_state.delete(String(this._args[0]));
                     else if (this._sql.includes('DELETE FROM app_state')) d1Tables.app_state.clear();
                     else if (this._sql.includes('INSERT INTO attachments')) d1Tables.attachments.set(String(this._args[0]), String(this._args[1]));
+                    else if (this._sql.includes('DELETE FROM attachments WHERE key LIKE')) {
+                        const prefix = String(this._args[0] || '').replace(/%$/, '');
+                        Array.from(d1Tables.attachments.keys()).forEach((k) => { if (k.startsWith(prefix)) d1Tables.attachments.delete(k); });
+                    }
                     else if (this._sql.includes('DELETE FROM attachments WHERE key =')) d1Tables.attachments.delete(String(this._args[0]));
                     return { success: true };
                 },
@@ -387,28 +412,20 @@ return (async () => {
         request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': 'owner' },
             body: JSON.stringify({ set: {
-                lumen_accounts: JSON.stringify({
-                    'acc-a': { email: 'a@co.ae', companyName: 'Co A', plan: 'basic', status: 'active', salt: rawTenantCreds.salt, passwordHash: rawTenantCreds.passwordHash },
-                    'acc-b': { email: 'b@co.ae', companyName: 'Co B', plan: 'advance', status: 'suspended', salt: 's2', passwordHash: 'h2' }
-                }),
+                lumen_accounts: JSON.stringify({ 'acc-a': { email: 'a@co.ae', companyName: 'Co A', plan: 'basic', status: 'active', salt: rawTenantCreds.salt, passwordHash: rawTenantCreds.passwordHash }, 'acc-b': { email: 'b@co.ae', companyName: 'Co B', plan: 'advance', status: 'suspended', salt: 's2', passwordHash: 'h2' } }),
                 lumen_profiles: JSON.stringify([{ id: 'prof-a', name: 'Co A', accountId: 'acc-a' }, { id: 'prof-b', name: 'Co B', accountId: 'acc-b' }]),
-                'profile:prof-a::bookkeeping_history_v2': '[{"id":"inv-a"}]',
-                'profile:prof-b::bookkeeping_history_v2': '[{"id":"inv-b"}]',
-                lumen_admin_credentials: '{"salt":"adm","passwordHash":"admhash"}'
+                'profile:prof-a::bookkeeping_history_v2': '[{"id":"inv-a"}]', 'profile:prof-b::bookkeeping_history_v2': '[{"id":"inv-b"}]', lumen_admin_credentials: '{"salt":"adm","passwordHash":"admhash"}'
             } })
         }), env: edgeEnvD1
     });
-
     const resOwnerState = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'GET', headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': 'owner' } }), env: edgeEnvD1 });
     assert.strictEqual(resOwnerState.headers.get('Cache-Control'), 'no-store, no-cache, must-revalidate');
     assert.strictEqual(Boolean((await resOwnerState.json()).state['lumen_admin_credentials']), false);
     const resUnauthMutate = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' }, body: JSON.stringify({ set: { 'profile:prof-a::bookkeeping_history_v2': '[]' } }) }), env: edgeEnvD1 });
     assert.strictEqual((await resUnauthMutate.json()).updated, 0);
-
     const resEdgeLogin = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' }, body: JSON.stringify({ email: 'a@co.ae', password: 'StrongPassword!123' }) }), env: edgeEnvD1 });
     const edgeLoginData = await resEdgeLogin.json();
-    assert.strictEqual(edgeLoginData.ok, true);
-    assert.strictEqual(edgeLoginData.accountId, 'acc-a');
+    assert.strictEqual(edgeLoginData.ok, true); assert.strictEqual(edgeLoginData.accountId, 'acc-a');
     assert(String(edgeLoginData.sessionToken || '').startsWith('sess.acc-a.'));
 
     // Edge password-reset endpoints (/api/v1/auth/password-reset/request & /api/v1/auth/password-reset/confirm) + non-string rejection
@@ -439,19 +456,20 @@ return (async () => {
     assert.strictEqual(Boolean(tenantAData.state['profile:prof-b::bookkeeping_history_v2']), false);
     assert.strictEqual(Boolean(tenantAData.state['lumen_admin_credentials']), false);
     const tenantAAccounts = JSON.parse(tenantAData.state.lumen_accounts || '{}');
-    assert.strictEqual(Boolean(tenantAAccounts['acc-a']), true);
-    assert.strictEqual(Boolean(tenantAAccounts['acc-b']), false);
+    assert.strictEqual(Boolean(tenantAAccounts['acc-a']), true); assert.strictEqual(Boolean(tenantAAccounts['acc-b']), false);
     assert.strictEqual(Boolean(tenantAAccounts['acc-a'].passwordHash), false);
-
-    await Auth.signInAdmin('admin@lumenconsultancy.net', 'LumenAdmin2026');
-    Profiles.updateAccountAdmin(reg.accountId, { plan: 'basic' });
-    await Auth.signIn('tenant1@example.com', 'StrongPassword!123');
-    assert.strictEqual(Profiles.getPlan(), 'basic');
+    d1Tables.attachments.set('prof-b::att-b1', 'data:image/png;base64,BBBB');
+    const edgeHdrs = (acc) => ({ 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': acc });
+    await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'POST', headers: edgeHdrs('owner'), body: JSON.stringify({ set: { lumen_accounts: JSON.stringify({ 'acc-b': { _deleted: true } }), lumen_profiles: JSON.stringify([{ id: 'prof-b', accountId: 'acc-b', _deleted: true }]) } }) }), env: edgeEnvD1 });
+    assert.strictEqual(d1Tables.app_state.has('profile:prof-b::bookkeeping_history_v2'), false); assert.strictEqual(d1Tables.attachments.has('prof-b::att-b1'), false);
+    assert.strictEqual(Boolean(JSON.parse(d1Tables.app_state.get('lumen_accounts') || '{}')['acc-b']), false);
+    await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'POST', headers: edgeHdrs('acc-b'), body: JSON.stringify({ set: { lumen_accounts: JSON.stringify({ 'acc-b': { email: 'b@co.ae', autoRenew: false } }) } }) }), env: edgeEnvD1 });
+    assert.strictEqual(Boolean(JSON.parse(d1Tables.app_state.get('lumen_accounts') || '{}')['acc-b']), false);
+    await Auth.signInAdmin('admin@lumenconsultancy.net', 'LumenAdmin2026'); Profiles.updateAccountAdmin(reg.accountId, { plan: 'basic' });
+    await Auth.signIn('tenant1@example.com', 'StrongPassword!123'); assert.strictEqual(Profiles.getPlan(), 'basic');
     const PlanGate = require(path.join(appDir, 'plan-gating.js'));
-    assert.strictEqual(PlanGate.canOpen('view-dashboard'), true);
-    assert.strictEqual(PlanGate.canOpen('view-audit'), false);
-    assert.strictEqual(PlanGate.canOpen('view-equity-statement'), false);
-    assert.strictEqual(PlanGate.canOpen('view-tax'), false);
+    assert.strictEqual(PlanGate.canOpen('view-dashboard'), true); assert.strictEqual(PlanGate.canOpen('view-audit'), false);
+    assert.strictEqual(PlanGate.canOpen('view-equity-statement'), false); assert.strictEqual(PlanGate.canOpen('view-tax'), false);
 
     let idbPutCalls = 0, idbDeletedDb = null;
     global.window.indexedDB = global.indexedDB = {
@@ -508,10 +526,10 @@ return (async () => {
         proc = run_node_script(node_script, APP_DIR)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(proc.stdout.strip().splitlines()[-1])["status"], "ok")
-
         script_js = "\n".join([(APP_DIR / "script.js").read_text(encoding="utf-8"), *(p.read_text(encoding="utf-8") for p in sorted(APP_DIR.glob("app-*.js")))])
         self.assertIn("targetEl.classList.contains('app-view')", script_js)
         self.assertIn("window.LumenPlanGate.canOpen(targetId)", script_js)
+        self.assertIn("sidebar-collapsed", script_js)
         for doc_rel in ("docs/product/prd-product-requirements.md", "docs/product/user-guide-and-release-notes.md"):
             doc_text = (REPO_ROOT / doc_rel).read_text(encoding="utf-8")
             self.assertIn("Corporate Tax Only (0% VAT)", doc_text)
@@ -524,7 +542,6 @@ return (async () => {
         html_bundle = "\n".join([(APP_DIR / "index.html").read_text(encoding="utf-8"), *(p.read_text(encoding="utf-8") for p in sorted(APP_DIR.glob("views-*.js")))])
         for ux_id in ("btnSidebarToggle", "btnQuickJump", "quickJumpModal", "quickJumpInput", "quickJumpList"):
             self.assertIn(ux_id, html_bundle)
-        self.assertIn("sidebar-collapsed", script_js)
 
 
 if __name__ == "__main__":

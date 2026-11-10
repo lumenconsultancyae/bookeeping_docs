@@ -17,45 +17,27 @@ import tempfile
 import threading
 
 LOCAL_ONLY_KEYS = frozenset({
-    "lumen_lang",
-    "lumen_sidebar_collapsed",
-    "probe",
-    "lumen_current_account",
-    "lumen_active_profile",
-    "lumen_session_token",
-    "lumen.advisorOrigin",
-    "lumen.returnView",
+    "lumen_lang", "lumen_sidebar_collapsed", "probe", "lumen_current_account",
+    "lumen_active_profile", "lumen_session_token", "lumen.advisorOrigin", "lumen.returnView",
 })
 
 ADMIN_EMAIL = "admin@lumenconsultancy.net"
 PBKDF2_ITERATIONS = 120000
 DEFAULT_ADMIN_SALT = "4c756d656e41646d696e53616c743236"
-DEFAULT_ADMIN_HASH = (
-    "pbkdf2_sha256$120000$70663afeba18d22eefd9f653155db1ccbb1a28718290cb662da2a408aceee2b4"
-)
+DEFAULT_ADMIN_HASH = "pbkdf2_sha256$120000$70663afeba18d22eefd9f653155db1ccbb1a28718290cb662da2a408aceee2b4"
 
 _MIGRATION_SQL_PATH = Path(__file__).resolve().parent / "migrations" / "0001_initial_schema.sql"
 
 
 def is_excluded_state_key(key: str) -> bool:
     """Return True if `key` belongs strictly to browser-local UI config or session pointers."""
-    return (
-        not isinstance(key, str)
-        or not key
-        or key in LOCAL_ONLY_KEYS
-        or key.startswith("lumen_table_page_size:")
-    )
+    return not isinstance(key, str) or not key or key in LOCAL_ONLY_KEYS or key.startswith("lumen_table_page_size:")
 
 
 def compute_password_hash(password: str, salt: str, iterations: int = PBKDF2_ITERATIONS) -> str:
     """Derive a salted PBKDF2-HMAC-SHA256 digest formatted as `pbkdf2_sha256$<iterations>$<hex>`."""
     clean_iters = max(int(iterations), 1)
-    derived = hashlib.pbkdf2_hmac(
-        "sha256",
-        str(password or "").encode("utf-8"),
-        str(salt or "").encode("utf-8"),
-        clean_iters,
-    ).hex()
+    derived = hashlib.pbkdf2_hmac("sha256", str(password or "").encode("utf-8"), str(salt or "").encode("utf-8"), clean_iters).hex()
     return f"pbkdf2_sha256${clean_iters}${derived}"
 
 
@@ -127,11 +109,7 @@ class LumenStateRepository:
         return token_acc
 
     def _read_all_from_conn(self, conn: sqlite3.Connection) -> dict[str, str]:
-        return {
-            str(k): str(v)
-            for k, v in conn.execute("SELECT key, value FROM app_state").fetchall()
-            if not is_excluded_state_key(k)
-        }
+        return {str(k): str(v) for k, v in conn.execute("SELECT key, value FROM app_state").fetchall() if not is_excluded_state_key(k)}
 
     def get_all_state(self) -> dict[str, str]:
         """Return all stored state keys (for internal/repository inspection)."""
@@ -139,32 +117,21 @@ class LumenStateRepository:
             return self._read_all_from_conn(conn)
 
     def _parse_accounts_and_profiles(self, state: Mapping[str, str]) -> tuple[dict[str, dict], list[dict]]:
-        accs = safe_json(state.get("lumen_accounts"), {})
-        profs = safe_json(state.get("lumen_profiles"), [])
-        clean_accs = {str(k): v for k, v in accs.items() if isinstance(v, dict)} if isinstance(accs, dict) else {}
-        clean_profs = [p for p in profs if isinstance(p, dict)] if isinstance(profs, list) else []
+        accs, profs = safe_json(state.get("lumen_accounts"), {}), safe_json(state.get("lumen_profiles"), [])
+        clean_accs = {str(k): v for k, v in accs.items() if isinstance(v, dict) and not v.get("_deleted")} if isinstance(accs, dict) else {}
+        clean_profs = [p for p in profs if isinstance(p, dict) and not p.get("_deleted")] if isinstance(profs, list) else []
         return clean_accs, clean_profs
 
     def _profile_ownership_sets(self, profiles: list[dict], caller: str) -> tuple[set[str], set[str]]:
         other_ids = {str(p.get("id") or "") for p in profiles if (p.get("accountId") or "owner") != caller} | {"default"}
-        owned_ids = (
-            {str(p.get("id") or "") for p in profiles if (p.get("accountId") or "owner") == caller}
-            | {caller, f"tenant-{caller}"}
-        ) - other_ids
+        owned_ids = ({str(p.get("id") or "") for p in profiles if (p.get("accountId") or "owner") == caller} | {caller, f"tenant-{caller}"}) - other_ids
         return owned_ids, other_ids
 
-    def resolve_caller_from_headers(
-        self,
-        *,
-        cf_email: str | None = None,
-        account_header: str | None = None,
-        session_header: str | None = None,
-    ) -> str:
+    def resolve_caller_from_headers(self, *, cf_email: str | None = None, account_header: str | None = None, session_header: str | None = None) -> str:
         """Resolve the authenticated caller account ID from Zero Trust or request headers."""
         with self._lock, self._connect() as conn:
             full = self._read_all_from_conn(conn)
         accounts, _ = self._parse_accounts_and_profiles(full)
-
         clean_cf_email = str(cf_email or "").strip().lower()
         if clean_cf_email:
             if clean_cf_email == ADMIN_EMAIL:
@@ -173,59 +140,36 @@ class LumenStateRepository:
                 if str(acc.get("email") or "").strip().lower() == clean_cf_email:
                     return acc_id if acc.get("status") != "suspended" else "unauthenticated"
             return "unauthenticated"
-
-        claimed = str(account_header or "").strip() or "unauthenticated"
-        clean_sess = str(session_header or "").strip()
+        claimed, clean_sess = str(account_header or "").strip() or "unauthenticated", str(session_header or "").strip()
         if clean_sess and not self.verify_session_token(clean_sess, claimed):
             return "unauthenticated"
         return claimed
 
-    def resolve_session(
-        self,
-        *,
-        cf_email: str | None = None,
-        account_header: str | None = None,
-        session_header: str | None = None,
-    ) -> dict[str, object]:
+    def resolve_session(self, *, cf_email: str | None = None, account_header: str | None = None, session_header: str | None = None) -> dict[str, object]:
         """Return `/api/v1/auth/session` payload for Cloudflare Zero Trust Access or active session."""
-        caller = self.resolve_caller_from_headers(
-            cf_email=cf_email, account_header=account_header, session_header=session_header
-        )
+        caller = self.resolve_caller_from_headers(cf_email=cf_email, account_header=account_header, session_header=session_header)
         if not caller or caller == "unauthenticated":
             return {"status": "ok", "authenticated": False, "accountId": None}
-        return {
-            "status": "ok",
-            "authenticated": True,
-            "accountId": caller,
-            "sessionToken": self.issue_session_token(caller),
-        }
+        return {"status": "ok", "authenticated": True, "accountId": caller, "sessionToken": self.issue_session_token(caller)}
 
     def get_scoped_state(self, account_id: str | None = None) -> dict[str, str]:
         """Return state scoped to `account_id`, always stripping `passwordHash` and `salt`."""
-        caller = str(account_id or "").strip() or "unauthenticated"
-        full = self.get_all_state()
+        caller, full = str(account_id or "").strip() or "unauthenticated", self.get_all_state()
         accounts, profiles = self._parse_accounts_and_profiles(full)
-
         if caller == "owner":
             out = {k: v for k, v in full.items() if k != "lumen_admin_credentials"}
             if "lumen_accounts" in out:
                 out["lumen_accounts"] = json.dumps({k: strip_account_secrets(v) for k, v in accounts.items()})
+            if "lumen_profiles" in out:
+                out["lumen_profiles"] = json.dumps(profiles)
             return out
-
         if caller == "unauthenticated":
-            public_accs = {
-                k: {"id": k, "email": v.get("email", ""), "status": v.get("status", "active")}
-                for k, v in accounts.items()
-                if v.get("email")
-            }
+            public_accs = {k: {"id": k, "email": v.get("email", ""), "status": v.get("status", "active")} for k, v in accounts.items() if v.get("email")}
             return {"lumen_accounts": json.dumps(public_accs), "lumen_profiles": "[]"}
-
         owned_profiles = [p for p in profiles if (p.get("accountId") or "owner") == caller]
         owned_ids, _ = self._profile_ownership_sets(profiles, caller)
         scoped = {
-            "lumen_accounts": json.dumps(
-                {caller: strip_account_secrets(accounts[caller])} if caller in accounts else {}
-            ),
+            "lumen_accounts": json.dumps({caller: strip_account_secrets(accounts[caller])} if caller in accounts else {}),
             "lumen_profiles": json.dumps(owned_profiles),
         }
         for k, v in full.items():
@@ -233,16 +177,9 @@ class LumenStateRepository:
                 scoped[k] = v
         return scoped
 
-    def mutate_state(
-        self,
-        set_items: Mapping[str, str] | None = None,
-        remove_keys: list[str] | None = None,
-        *,
-        clear_all: bool = False,
-    ) -> int:
+    def mutate_state(self, set_items: Mapping[str, str] | None = None, remove_keys: list[str] | None = None, *, clear_all: bool = False) -> int:
         """Low-level state mutation helper for direct repository manipulation."""
-        now = datetime.now(timezone.utc).isoformat()
-        updated = 0
+        now, updated = datetime.now(timezone.utc).isoformat(), 0
         with self._lock, self._connect() as conn:
             if clear_all:
                 conn.execute("DELETE FROM app_state")
@@ -251,22 +188,11 @@ class LumenStateRepository:
                     conn.execute("DELETE FROM app_state WHERE key = ?", (k,))
             for k, v in (set_items or {}).items():
                 if not is_excluded_state_key(k) and v is not None:
-                    conn.execute(
-                        "INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, ?) "
-                        "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-                        (str(k), str(v), now),
-                    )
+                    conn.execute("INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", (str(k), str(v), now))
                     updated += 1
         return updated
 
-    def mutate_scoped_state(
-        self,
-        account_id: str | None,
-        set_items: Mapping[str, str] | None = None,
-        remove_keys: list[str] | None = None,
-        *,
-        clear_all: bool = False,
-    ) -> int:
+    def mutate_scoped_state(self, account_id: str | None, set_items: Mapping[str, str] | None = None, remove_keys: list[str] | None = None, *, clear_all: bool = False) -> int:
         """Atomically validate and apply tenant-scoped state mutations in a single SQLite transaction."""
         caller = str(account_id or "").strip() or "unauthenticated"
         if caller == "unauthenticated":
@@ -282,13 +208,30 @@ class LumenStateRepository:
             owned_prof_ids, other_prof_ids = self._profile_ownership_sets(existing_profiles, caller)
 
             raw_set = dict(set_items or {})
+            deleted_acc_ids: set[str] = set()
+            deleted_prof_ids: set[str] = set()
+            if is_owner and "lumen_accounts" in raw_set and raw_set["lumen_accounts"] is not None:
+                inc_accs = safe_json(str(raw_set["lumen_accounts"]), None)
+                if isinstance(inc_accs, dict):
+                    for acc_id, acc_obj in inc_accs.items():
+                        if acc_obj is None or (isinstance(acc_obj, dict) and acc_obj.get("_deleted")):
+                            deleted_acc_ids.add(str(acc_id))
+                    for p in existing_profiles:
+                        if str(p.get("accountId") or "") in deleted_acc_ids and p.get("id"):
+                            deleted_prof_ids.add(str(p.get("id")))
             if "lumen_profiles" in raw_set and raw_set["lumen_profiles"] is not None:
                 incoming_profs = safe_json(str(raw_set["lumen_profiles"]), None)
                 if isinstance(incoming_profs, list):
                     for p in incoming_profs:
-                        if isinstance(p, dict) and (p.get("accountId") or "owner") == caller:
+                        if isinstance(p, dict):
                             pid = str(p.get("id") or "")
-                            if pid and pid not in other_prof_ids:
+                            if not pid:
+                                continue
+                            if is_owner and (p.get("_deleted") or str(p.get("accountId") or "") in deleted_acc_ids):
+                                deleted_prof_ids.add(pid)
+                            elif not is_owner and p.get("_deleted") and pid in owned_prof_ids and pid not in other_prof_ids:
+                                deleted_prof_ids.add(pid)
+                            elif (p.get("accountId") or "owner") == caller and pid not in other_prof_ids:
                                 owned_prof_ids.add(pid)
 
             safe_set: dict[str, str] = {}
@@ -304,7 +247,10 @@ class LumenStateRepository:
                         continue
                     merged = dict(existing_accounts)
                     for acc_id, acc_obj in incoming.items():
-                        if not isinstance(acc_obj, dict) or (not is_owner and acc_id != caller):
+                        if is_owner and (acc_obj is None or (isinstance(acc_obj, dict) and acc_obj.get("_deleted"))):
+                            merged.pop(acc_id, None)
+                            continue
+                        if not isinstance(acc_obj, dict) or acc_obj.get("_deleted") or (not is_owner and acc_id != caller):
                             continue
                         prev = existing_accounts.get(acc_id)
                         nxt = {**(prev if isinstance(prev, dict) else {}), **acc_obj}
@@ -333,6 +279,8 @@ class LumenStateRepository:
                                         else "canceled_at_period_end"
                                     )
                         elif not is_owner:
+                            if not (acc_obj.get("passwordHash") and acc_obj.get("salt")):
+                                continue
                             req_plan = str(acc_obj.get("plan") or "basic").strip().lower()
                             if req_plan in ("advance", "premium") and not nxt.get("requestedPlan"):
                                 nxt["requestedPlan"] = req_plan
@@ -351,25 +299,55 @@ class LumenStateRepository:
                         continue
                     if not is_owner:
                         others = [p for p in existing_profiles if (p.get("accountId") or "owner") != caller]
-                        mine = [p for p in incoming_profs if isinstance(p, dict) and (p.get("accountId") or "owner") == caller and str(p.get("id") or "") and str(p.get("id") or "") not in other_prof_ids]
+                        mine = [
+                            p
+                            for p in incoming_profs
+                            if isinstance(p, dict)
+                            and not p.get("_deleted")
+                            and (p.get("accountId") or "owner") == caller
+                            and str(p.get("id") or "")
+                            and str(p.get("id") or "") not in deleted_prof_ids
+                            and str(p.get("id") or "") not in other_prof_ids
+                        ]
                         safe_set[k] = json.dumps([*others, *mine])
                     else:
-                        inc_clean = [p for p in incoming_profs if isinstance(p, dict)]
-                        inc_ids = {str(p.get("id") or "") for p in inc_clean}
-                        preserved_tenants = [] if clear_all else [p for p in existing_profiles if (p.get("accountId") or "owner") != "owner" and str(p.get("id") or "") not in inc_ids]
+                        inc_all = [p for p in incoming_profs if isinstance(p, dict)]
+                        del_ids = deleted_prof_ids | {str(p.get("id") or "") for p in inc_all if p.get("_deleted") or str(p.get("accountId") or "") in deleted_acc_ids}
+                        deleted_prof_ids.update(del_ids)
+                        inc_clean = [p for p in inc_all if not p.get("_deleted") and str(p.get("id") or "") not in del_ids and str(p.get("accountId") or "") not in deleted_acc_ids]
+                        inc_ids = {str(p.get("id") or "") for p in inc_clean} | del_ids
+                        preserved_tenants = [] if clear_all else [p for p in existing_profiles if (p.get("accountId") or "owner") != "owner" and str(p.get("id") or "") not in inc_ids and str(p.get("accountId") or "") not in deleted_acc_ids]
                         safe_set[k] = json.dumps([*inc_clean, *preserved_tenants])
                 elif not is_owner:
                     if k.startswith("profile:"):
                         prof_id = k[len("profile:") :].split("::", 1)[0]
-                        if prof_id in owned_prof_ids and prof_id not in other_prof_ids:
+                        if prof_id in owned_prof_ids and prof_id not in other_prof_ids and prof_id not in deleted_prof_ids:
                             safe_set[k] = val_str
                 else:
+                    if k.startswith("profile:") and k[len("profile:") :].split("::", 1)[0] in deleted_prof_ids:
+                        continue
                     safe_set[k] = val_str
+
+            if is_owner and (deleted_acc_ids or deleted_prof_ids) and "lumen_profiles" not in safe_set:
+                safe_set["lumen_profiles"] = json.dumps(
+                    [
+                        p
+                        for p in existing_profiles
+                        if str(p.get("id") or "") not in deleted_prof_ids and str(p.get("accountId") or "") not in deleted_acc_ids
+                    ]
+                )
 
             safe_remove = [
                 str(k) for k in (remove_keys or [])
                 if isinstance(k, str) and (is_owner or (k.startswith("profile:") and k[len("profile:") :].split("::", 1)[0] in owned_prof_ids and k[len("profile:") :].split("::", 1)[0] not in other_prof_ids))
             ]
+            if deleted_prof_ids:
+                for k in full:
+                    if k.startswith("profile:") and k[len("profile:") :].split("::", 1)[0] in deleted_prof_ids:
+                        safe_remove.append(k)
+                        safe_set.pop(k, None)
+                for pid in deleted_prof_ids:
+                    conn.execute("DELETE FROM attachments WHERE key LIKE ?", (f"{pid}::%",))
 
             if clear_all and is_owner:
                 conn.execute("DELETE FROM app_state")
@@ -468,7 +446,9 @@ class LumenStateRepository:
                 if caller not in ("owner", acc_id):
                     return {"ok": False, "error": "Forbidden."}
                 amt = prices.get(str(acc.get("plan") or "advance"), 75) * (10 if acc.get("billing") == "yearly" else 1)
-                msg = f"Reminder sent to {acc.get('email')}: Your 1-month free trial ends on {str(acc.get('trialEndsAt') or '')[:10] or 'soon'}. Unless canceled, AED {amt} will be auto-deducted on {acc.get('cardBrand') or 'Card'} •••• {acc.get('cardLast4') or '0000'}."
+                raw_end = str(acc.get("trialEndsAt") or "")[:10]
+                end_disp = f"{raw_end[8:10]}/{raw_end[5:7]}/{raw_end[2:4]}" if len(raw_end) == 10 and raw_end[4] == "-" and raw_end[7] == "-" else (raw_end or "soon")
+                msg = f"Reminder sent to {acc.get('email')}: Your 1-month free trial ends on {end_disp}. Unless canceled, AED {amt} will be auto-deducted on {acc.get('cardBrand') or 'Card'} •••• {acc.get('cardLast4') or '0000'}."
                 acc["renewalReminderSentAt"], acc["renewalReminderMessage"] = datetime.now(timezone.utc).isoformat(), msg
                 self.mutate_state({"lumen_accounts": json.dumps(accounts)})
                 return {"ok": True, "accountId": acc_id, "sentTo": acc.get("email"), "message": msg}
@@ -508,7 +488,7 @@ class LumenStateRepository:
             return False
         row = conn.execute("SELECT value FROM app_state WHERE key = 'lumen_profiles'").fetchone()
         raw_profs = safe_json(str(row[0]) if row else "[]", [])
-        profiles = [p for p in raw_profs if isinstance(p, dict)] if isinstance(raw_profs, list) else []
+        profiles = [p for p in raw_profs if isinstance(p, dict) and not p.get("_deleted")] if isinstance(raw_profs, list) else []
         owned_prof_ids, other_prof_ids = self._profile_ownership_sets(profiles, caller)
         return prof_id in owned_prof_ids and prof_id not in other_prof_ids
 

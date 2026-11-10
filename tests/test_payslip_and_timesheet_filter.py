@@ -245,7 +245,7 @@ class TestPayslipAndTimesheetEmployeeFilter(unittest.TestCase):
             self.assertIn("Tariq Al Hashimi", doc_html)
             self.assertIn("EMP001", doc_html)
             self.assertIn("Lead Mechanical Engineer", doc_html)
-            self.assertIn("2022-09-01", doc_html)
+            self.assertIn("01/09/22", doc_html)
             self.assertIn("Al Noor &amp; Sons &lt;Precision&gt; Engineering LLC", doc_html)
             self.assertNotIn("<Precision>", doc_html)
             self.assertIn("Plot 42, Dubai Industrial City, Dubai, UAE", doc_html)

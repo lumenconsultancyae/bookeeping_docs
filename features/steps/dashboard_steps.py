@@ -176,7 +176,8 @@ def step_verify_dashboard_pdc_reminder(
     days_offset: str,
     expected_amount: str,
 ) -> None:
-    expected_date = _offset_date_iso(int(days_offset))
+    iso_date = _offset_date_iso(int(days_offset))
+    expected_date = f"{iso_date[8:10]}/{iso_date[5:7]}/{iso_date[2:4]}"
     summary = context.dashboard_page.get_pdc_reminder_summary()
     list_text = summary["list_text"]
     assert supplier_name in list_text, (

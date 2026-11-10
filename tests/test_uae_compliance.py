@@ -85,8 +85,8 @@ class UAEComplianceRemindersUnitTests(unittest.TestCase):
         ):
             self.assertIn(field_id, script_bundle)
         payroll_js = (APP_DIR / "app-payroll-and-wps.js").read_text(encoding="utf-8")
-        self.assertIn("escHtml(e.visaExpiry)", payroll_js)
-        self.assertIn("escHtml(e.emiratesIdExpiry)", payroll_js)
+        self.assertIn("window.formatDateDdMmYy(e.visaExpiry)", payroll_js)
+        self.assertIn("window.formatDateDdMmYy(e.emiratesIdExpiry)", payroll_js)
         self.assertIn("escHtml(e.name", payroll_js)
 
     def test_compliance_reminders_executes_behaviorally_in_node(self) -> None:
@@ -203,7 +203,7 @@ store['bookkeeping_employees'] = JSON.stringify([
 ]);
 UAEComplianceReminders.renderWidget({ referenceDate: '2026-11-05' });
 assert(elements['compTradeLicenseBadge'].textContent.includes('15d'));
-assert.strictEqual(elements['compTradeLicenseExpiry'].textContent, '2026-11-20');
+assert.strictEqual(elements['compTradeLicenseExpiry'].textContent, '20/11/26');
 assert(elements['compEstCardBadge'].textContent.includes('Valid'));
 assert(!elements['compEmployeeAlertsList'].innerHTML.includes('<script>evil()</script>'));
 assert(elements['compEmployeeAlertsList'].innerHTML.includes('&lt;script&gt;evil()&lt;/script&gt;'));
@@ -495,7 +495,7 @@ store['bookkeeping_cheques'] = JSON.stringify([
 UAEComplianceReminders.renderPdcWidget({ referenceDate: '2026-11-09' });
 const listHtml = elements['pdcReminderList'].innerHTML;
 assert(listHtml.includes('Al Futtaim Building Materials LLC'), 'Must show supplier name');
-assert(listHtml.includes('2026-11-12'), 'Must show cheque clearing date');
+assert(listHtml.includes('12/11/26'), 'Must show cheque clearing date');
 assert(listHtml.includes('18,500.50'), 'Must show formatted cheque amount');
 assert(listHtml.includes('42,000.00'), 'Must show second cheque formatted amount');
 assert(!listHtml.includes('Distant Future Supplier'), 'Must exclude >30d cheques from widget DOM');
