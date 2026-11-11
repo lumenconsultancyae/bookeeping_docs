@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY migrations /app/migrations
-COPY state_repository.py agy_service.py /app/
+COPY state_repository.py einvoice_service.py agy_service.py /app/
 
 EXPOSE 3000
 

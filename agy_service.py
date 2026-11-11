@@ -513,6 +513,10 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
                 fn = repo.send_trial_renewal_reminder if parsed.path.endswith("trial-reminder") else repo.process_trial_renewal
                 res = fn(payload.get("email"), caller_account=caller_acc)
                 return self._send_json(res, status=403 if res.get("error") == "Forbidden." else int(res.get("status_code") or 200))
+            if parsed.path in ("/api/v1/einvoice/submit", "/api/v1/einvoice/webhook", "/api/v1/einvoice/inbound"):
+                payload = _parse_json_object(body)
+                res = repo.handle_einvoice_webhook(payload) if parsed.path.endswith("webhook") else (repo.receive_inbound_einvoice(payload, caller_account=caller_acc) if parsed.path.endswith("inbound") else repo.submit_einvoice(payload, caller_account=caller_acc))
+                return self._send_json(res, status=int(res.get("status_code") or 200))
             if parsed.path == "/api/v1/state":
                 return self._send_json(_handle_state_post(body, repo, caller_acc), status=200)
             if parsed.path == "/api/v1/attachments":
@@ -535,14 +539,12 @@ def main() -> None:
         print(f"Received signal {signum}, shutting down agy prediction service...", flush=True)
         threading.Thread(target=server.shutdown, daemon=True).start()
 
-    signal.signal(signal.SIGTERM, _handle_shutdown)
-    signal.signal(signal.SIGINT, _handle_shutdown)
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, _handle_shutdown)
     print(f"Starting agy prediction service on http://{HOST}:{PORT} (model={AGY_MODEL})", flush=True)
     try:
         server.serve_forever()
     finally:
         server.server_close()
-
-
 if __name__ == "__main__":
     main()

@@ -516,6 +516,21 @@ class LumenStateRepository:
                     updated += 1
         return updated
 
+    def submit_einvoice(self, payload: Mapping[str, object], caller_account: str | None = "owner") -> dict[str, object]:
+        """Validate and clear an outbound PINT-AE UBL 2.1 E-Invoice (380) or Credit Note (381) via the configured ASP."""
+        import einvoice_service
+        return einvoice_service.submit_einvoice(self, payload, caller_account=caller_account)
+
+    def handle_einvoice_webhook(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Process an asynchronous delivery / FTA clearance webhook notification from the Peppol ASP."""
+        import einvoice_service
+        return einvoice_service.handle_einvoice_webhook(self, payload)
+
+    def receive_inbound_einvoice(self, payload: Mapping[str, object], caller_account: str | None = "owner") -> dict[str, object]:
+        """Parse an inbound Peppol PINT-AE UBL 2.1 supplier invoice XML and save it into the tenant's ledger."""
+        import einvoice_service
+        return einvoice_service.receive_inbound_einvoice(self, payload, caller_account=caller_account)
+
 
 def resolve_default_state_db_path(explicit_path: str | None = None) -> Path:
     """Resolve the SQLite database file path without side effects."""

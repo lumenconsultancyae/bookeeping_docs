@@ -29,6 +29,7 @@ services:
     volumes:
       - ${HOST_DOCS_DIR:-.}/agy_service.py:/app/agy_service.py:ro
       - ${HOST_DOCS_DIR:-.}/state_repository.py:/app/state_repository.py:ro
+      - ${HOST_DOCS_DIR:-.}/einvoice_service.py:/app/einvoice_service.py:ro
       - ${HOST_DOCS_DIR:-.}/.agy_state/gemini:/root/.gemini
       - ${HOST_DOCS_DIR:-.}/.agy_state/conversations:/root/.gemini/antigravity-cli/conversations
       - ${HOST_DOCS_DIR:-.}/.agy_state/brain:/root/.gemini/antigravity-cli/brain
