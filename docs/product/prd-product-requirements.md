@@ -2,7 +2,7 @@
 
 ## Purpose & Product Scope
 
-Lumen Accounting Suite provides UAE small and medium-sized enterprises (SMEs) with a unified, browser-accessible bookkeeping, commercial operations, payroll, and tax compliance application. This PRD defines the current short-term product deliverable scope separately from the target architecture delta documented in the companion Software Design Document (SDD).
+Lumen Accounting Suite provides UAE small and medium-sized enterprises (SMEs) with a unified, browser-accessible bookkeeping, commercial operations, payroll, and tax compliance application built on **Official React 18 (`18.3.1`)**, **TypeScript** (`types/accounting.ts`, `.ts` tax/compliance engines, `.tsx` views and controllers, `renderSlot` declarative slot rendering), and **Vite** (`vite.config.ts`). This PRD defines the current short-term product deliverable scope separately from the target architecture delta documented in the companion Software Design Document (SDD).
 
 ---
 

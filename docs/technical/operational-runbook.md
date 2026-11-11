@@ -118,13 +118,17 @@
      -H "Content-Type: application/json" -H "X-Lumen-Client: lumen-bookkeeping-web" \
      -H "Origin: https://lumen-bookkeeping.pages.dev" -d '{"question":"ping"}'
    ```
-5. **Provisioning Dry-Run & In-Process Unit + Automated BDD E2E Verification**:
+5. **TypeScript Type-Checking, Domain Unit Tests & Automated BDD E2E Verification**:
    ```bash
+   cd /workspace/projects/bookeeping_4affdf/default/bookkeeping-tool
+   npm run typecheck
+   npm test
+   npm run build:modules
    cd /workspace/projects/bookeeping_4affdf/default/bookeeping_docs
    python3 -B -m unittest discover -s tests -v
    behave
    ```
-   - **Expected Output**: 100% passing unit, HTTP integration, and browser DOM behavioral tests (`tests/test_agy_service.py`, `tests/test_provisioning.py`, `tests/test_provisioning_clients.py`, `tests/test_auth_and_welcome.py`, `tests/test_faf_export.py`, `tests/test_ledger_and_timesheet_deletion.py`, `tests/test_payslip_and_timesheet_filter.py`, `tests/test_react_migration.py`, `tests/test_uae_compliance.py`, `tests/test_ui_feedback_and_forms.py`, `tests/test_ui_tables_and_layout.py`, and `tests/test_whatsapp_workflows.py`), 8 features passed (43 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
+   - **Expected Output**: Zero TypeScript diagnostics (`tsc --noEmit`), 100% passing TypeScript domain unit tests (`tests/domain-accounting.test.ts`), 100% passing unit, HTTP integration, and browser DOM behavioral tests (`tests/test_agy_service.py`, `tests/test_provisioning.py`, `tests/test_provisioning_clients.py`, `tests/test_auth_and_welcome.py`, `tests/test_faf_export.py`, `tests/test_ledger_and_timesheet_deletion.py`, `tests/test_payslip_and_timesheet_filter.py`, `tests/test_react_migration.py`, `tests/test_uae_compliance.py`, `tests/test_ui_feedback_and_forms.py`, `tests/test_ui_tables_and_layout.py`, and `tests/test_whatsapp_workflows.py`), 8 features passed (43 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
 
 ---
 

@@ -27,7 +27,7 @@ bookeeping_docs/
 │   ├── aws_client.py                                # AWS EC2 Query API (SigV4) adapter
 │   ├── infrastructure.py                            # Re-export facade for Cloudflare & AWS EC2 adapters
 │   └── service.py                                   # End-to-end provisioning orchestration service
-├── tests/                                           # Unit, HTTP integration & behavioral JS test suite
+├── tests/                                           # Unit, HTTP integration & behavioral JS/TS test suite
 │   ├── test_agy_service.py                          # Unit & HTTP integration tests for agy_service.py
 │   ├── test_auth_and_welcome.py                     # Auth, multi-tenant isolation, plan gating & edge proxy tests
 │   ├── test_faf_export.py                           # FTA VAT 201, FAF CSV, Credit Notes, PINT-AE XML, CT Tracker & XSS tests
@@ -38,7 +38,7 @@ bookeeping_docs/
 │   ├── test_uae_compliance.py                       # UAE Compliance Expiry Reminders, WPS .SIF (EDR/SCR) & Art. 51 Gratuity tests
 │   ├── test_ui_feedback_and_forms.py                # In-app toasts/confirmations & inline form validation tests
 │   ├── test_ui_tables_and_layout.py                 # Table pagination, search, row highlight & responsive drawer tests
-│   ├── test_react_migration.py                      # React 18 SPA runtime, hooks, query key cache, URL router & shell tests
+│   ├── test_react_migration.py                      # Official React 18.3.1 + TypeScript/Vite SPA runtime, domain unit tests, tsc & XSS tests
 │   └── test_whatsapp_workflows.py                   # WhatsApp EN/AR invoice share, +971 phone, TRN OCR & executive print tests
 ├── behave.ini                                       # Behave BDD runner configuration
 ├── requirements.txt                                 # Python BDD & Playwright browser dependencies
@@ -186,24 +186,32 @@ To prevent unauthorized external users or third-party websites from invoking the
    - Both [`bookkeeping-tool/functions/api/[[path]].js`](../bookkeeping-tool/functions/api/[[path]].js) and [`agy_service.py`](agy_service.py) (`_is_allowed_origin`) validate the request `Origin` (and `Referer` fallback) against trusted application origins (`https://bookeeping.lumenconsultancy.net`, `https://bookkeeping.lumenconsultancy.net`, `https://lumen-bookkeeping.pages.dev`, `https://*.lumen-bookkeeping.pages.dev`, `http://localhost:9091`, `http://127.0.0.1:9091`, `http://bookkeeping-web`).
    - Wildcard CORS (`Access-Control-Allow-Origin: *`) is disabled; CORS headers are only emitted for verified allowlisted origins, blocking any cross-origin browser requests at preflight (`OPTIONS`).
 2. **Application Handshake Header (`X-Lumen-Client: lumen-bookkeeping-web` — `HTTP 401 unauthorized`)**:
-   - All 5 AI extraction `fetch()` calls across [`bookkeeping-tool/script.js`](../bookkeeping-tool/script.js) and [`bookkeeping-tool/expenses.js`](../bookkeeping-tool/expenses.js) attach `'X-Lumen-Client': 'lumen-bookkeeping-web'`.
+   - All 5 AI extraction `fetch()` calls across [`bookkeeping-tool/script.tsx`](../bookkeeping-tool/script.tsx) ([`script.js`](../bookkeeping-tool/script.js)), `app-*.tsx` (`app-*.js`), and [`bookkeeping-tool/expenses.tsx`](../bookkeeping-tool/expenses.tsx) ([`expenses.js`](../bookkeeping-tool/expenses.js)) attach `'X-Lumen-Client': 'lumen-bookkeeping-web'`.
    - Requests missing this header (such as direct `curl` probes or generic scanners) are rejected with `401 Unauthorized` and also forced through CORS preflight in browsers.
 3. **Edge-to-Origin Shared Secret (`X-Agy-Proxy-Secret` / `AGY_API_SECRET` — `HTTP 401 unauthorized`)**:
-   - The Cloudflare Pages Function [`functions/api/[[path]].js`](../bookkeeping-tool/functions/api/[[path]].js) validates both `GET` and `POST` requests (rejecting other HTTP methods with `405 Method Not Allowed`), fails closed (`503 Service Unavailable`) if `AGY_BACKEND_URL` is unconfigured, and injects `X-Agy-Proxy-Secret` from the server-side `AGY_API_SECRET` environment secret when forwarding validated requests to AWS EC2.
+   - The Cloudflare Pages Function [`functions/api/[[path]].ts`](../bookkeeping-tool/functions/api/[[path]].ts) ([`functions/api/[[path]].js`](../bookkeeping-tool/functions/api/[[path]].js)) validates both `GET` and `POST` requests (rejecting other HTTP methods with `405 Method Not Allowed`), fails closed (`503 Service Unavailable`) if `AGY_BACKEND_URL` is unconfigured, and injects `X-Agy-Proxy-Secret` from the server-side `AGY_API_SECRET` environment secret when forwarding validated requests to AWS EC2.
    - [`agy_service.py`](agy_service.py) (`_verify_prediction_request_security`) verifies `X-Agy-Proxy-Secret` using constant-time `hmac.compare_digest`. Any direct request to the AWS EC2 IP/hostname that bypasses the Cloudflare Pages Function is immediately rejected with `401 Unauthorized`, even if `Origin` and `X-Lumen-Client` headers are spoofed.
 
 ---
 
 ## 5. Running the Test Suites
 
-### 1. Run In-Process Unit, HTTP Integration & Behavioral JS Tests
+### 1. Run TypeScript Type-Checking, Domain Unit Tests & Module Compilation (`bookkeeping-tool`)
+```bash
+cd ../bookkeeping-tool
+npm run typecheck          # tsc --noEmit across types/accounting.ts, src/react-runtime.ts, *.ts & *.tsx
+npm test                   # vitest run tests/domain-accounting.test.ts
+npm run build:modules      # node scripts/build-ts-modules.cjs
+```
+
+### 2. Run In-Process Unit, HTTP Integration & Behavioral JS/TS Tests (`bookeeping_docs`)
 ```bash
 python3 -B -m unittest discover -s tests -v
 ```
 
-### 2. Execute the Behave BDD E2E Suite
+### 3. Execute the Behave BDD E2E Suite
 ```bash
-# Run all 41 scenarios across all 8 features
+# Run all 43 scenarios across all 8 features
 behave
 
 # Run only @smoke tagged scenarios

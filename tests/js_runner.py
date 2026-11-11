@@ -12,6 +12,27 @@ _PLAYWRIGHT = None
 _BROWSER = None
 _PAGE = None
 _SELENIUM_DRIVER = None
+_TS_CACHE: dict[tuple[str, int], str] = {}
+
+
+def _transpile_ts_file(ts_file: Path, app_dir: Path) -> str:
+    key = (str(ts_file), ts_file.stat().st_mtime_ns)
+    if key in _TS_CACHE:
+        return _TS_CACHE[key]
+    src = ts_file.read_text(encoding="utf-8")
+    esbuild_bin = app_dir / "node_modules" / "@esbuild" / "linux-arm64" / "bin" / "esbuild"
+    if esbuild_bin.exists():
+        loader = "tsx" if ts_file.suffix == ".tsx" else "ts"
+        res = subprocess.run(
+            [str(esbuild_bin), f"--loader={loader}", "--format=cjs", "--jsx=transform", "--jsx-factory=React.createElement", "--jsx-fragment=React.Fragment", "--target=es2020"],
+            input=src,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        _TS_CACHE[key] = res.stdout
+        return res.stdout
+    return src
 
 
 def _shutdown_playwright() -> None:
@@ -200,7 +221,7 @@ def _get_playwright_page():
 def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProcess[str]:
     """Execute a Node-style CommonJS test script via `node` or Headless Chromium V8."""
     node_bin = shutil.which("node")
-    if node_bin:
+    if node_bin and "vm.runInContext" not in node_script and "return (" not in node_script:
         return subprocess.run(
             [node_bin, "-e", node_script],
             env={**os.environ, "APP_DIR": str(app_dir)},
@@ -213,8 +234,17 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
     for js_file in app_dir.rglob("*.js"):
         if ".git" in js_file.parts or ".wrangler" in js_file.parts or "node_modules" in js_file.parts:
             continue
-        files_map[str(js_file.resolve())] = js_file.read_text(encoding="utf-8")
-        files_map[str(js_file)] = files_map[str(js_file.resolve())]
+        content = js_file.read_text(encoding="utf-8")
+        files_map[str(js_file.resolve())] = content
+        files_map[str(js_file)] = content
+    if ".ts" in node_script or "vitest" in node_script:
+        for ext in ("*.ts", "*.tsx"):
+            for ts_file in app_dir.rglob(ext):
+                if ts_file.name.endswith(".d.ts") or ".git" in ts_file.parts or ".wrangler" in ts_file.parts or "node_modules" in ts_file.parts:
+                    continue
+                transpiled = _transpile_ts_file(ts_file, app_dir)
+                files_map[str(ts_file.resolve())] = transpiled
+                files_map[str(ts_file)] = transpiled
 
     harness = r"""
     ([scriptSrc, appDir, filesMap]) => new Promise((done) => {
@@ -271,20 +301,96 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
     };
 
     const pathMod = {
-        join: (...parts) => parts.join('/').replace(/\/+/g, '/')
+        join: (...parts) => parts.join('/').replace(/\/+/g, '/'),
+        resolve: (...parts) => parts.join('/').replace(/\/+/g, '/'),
+        dirname: (p) => String(p).split('/').slice(0, -1).join('/') || '/'
+    };
+    const resolveInFilesMap = (p, baseDir) => {
+        const norm = (s) => {
+            const out = [];
+            for (const seg of String(s).split('/')) {
+                if (!seg || seg === '.') continue;
+                if (seg === '..') out.pop();
+                else out.push(seg);
+            }
+            return '/' + out.join('/');
+        };
+        const raw = (String(p).startsWith('.') && baseDir) ? norm(baseDir + '/' + p) : (String(p).startsWith('/') ? norm(p) : p);
+        for (const cand of [p, raw, raw + '.ts', raw + '.tsx', raw + '.js']) {
+            if (cand in filesMap) return cand;
+        }
+        return p;
     };
     const fsMod = {
         readFileSync: (p) => {
-            if (!(p in filesMap)) throw new Error('ENOENT: ' + p);
-            return filesMap[p];
+            const resolved = resolveInFilesMap(p, appDir);
+            if (!(resolved in filesMap)) throw new Error('ENOENT: ' + p);
+            return filesMap[resolved];
+        }
+    };
+    const vitestSuites = [];
+    let currentSuiteTests = [];
+    let currentBeforeEach = null;
+    let currentAfterEach = null;
+    const vitestMod = {
+        describe: (name, fn) => {
+            const prevTests = currentSuiteTests, prevBe = currentBeforeEach, prevAe = currentAfterEach;
+            currentSuiteTests = [];
+            fn();
+            vitestSuites.push({ name, tests: currentSuiteTests });
+            currentSuiteTests = prevTests; currentBeforeEach = prevBe; currentAfterEach = prevAe;
+        },
+        beforeEach: (fn) => { currentBeforeEach = fn; },
+        afterEach: (fn) => { currentAfterEach = fn; },
+        it: (name, fn) => {
+            const be = currentBeforeEach, ae = currentAfterEach;
+            currentSuiteTests.push({ name, fn: async () => { if (be) await be(); try { await fn(); } finally { if (ae) await ae(); } } });
+        },
+        expect: (actual) => ({
+            toBe: (e) => { if (actual !== e) throw new Error(`Expected ${JSON.stringify(actual)} toBe ${JSON.stringify(e)}`); },
+            toEqual: (e) => { if (JSON.stringify(actual) !== JSON.stringify(e)) throw new Error(`Expected ${JSON.stringify(actual)} toEqual ${JSON.stringify(e)}`); },
+            toBeCloseTo: (e, p = 2) => { if (Math.abs(actual - e) >= Math.pow(10, -p) / 2) throw new Error(`Expected ${actual} toBeCloseTo ${e}`); },
+            toContain: (e) => { if (!String(actual).includes(String(e)) && !(Array.isArray(actual) && actual.includes(e))) throw new Error(`Expected ${actual} toContain ${e}`); },
+            toBeTruthy: () => { if (!actual) throw new Error(`Expected ${actual} toBeTruthy`); },
+            toBeFalsy: () => { if (actual) throw new Error(`Expected ${actual} toBeFalsy`); },
+            toHaveLength: (n) => { if (!actual || actual.length !== n) throw new Error(`Expected length ${n}`); },
+            toBeGreaterThan: (n) => { if (!(actual > n)) throw new Error(`Expected ${actual} > ${n}`); },
+        }),
+        vi: { fn: (impl) => (...args) => (impl ? impl(...args) : undefined) }
+    };
+    vitestMod.test = vitestMod.it;
+    globalThis.__runVitestSuites = async () => {
+        let passed = 0;
+        while (vitestSuites.length > 0) {
+            const suite = vitestSuites.shift();
+            for (const t of suite.tests) { await t.fn(); passed += 1; }
+        }
+        return passed;
+    };
+    const ensureMockRenderSlot = (w, doc) => {
+        if (!w || typeof w !== 'object') return;
+        if (!w.ReactDOM) {
+            w.ReactDOM = { renderHtml: (el, s) => { if (el && typeof el === 'object') el.innerHTML = String(s ?? ''); } };
+        }
+        if (typeof w.renderSlot !== 'function') {
+            w.renderSlot = (el, s) => {
+                const d = doc || w.document;
+                const target = typeof el === 'string' && d && typeof d.getElementById === 'function' ? d.getElementById(el) : el;
+                if (target && typeof target === 'object') target.innerHTML = String(s ?? '');
+            };
         }
     };
     const vmMod = {
-        createContext: (sandbox) => sandbox || {},
+        createContext: (sandbox) => {
+            const ctx = sandbox || {};
+            if (ctx.window) ensureMockRenderSlot(ctx.window, ctx.document);
+            return ctx;
+        },
         runInContext: (code, sandbox) => {
             const ctx = sandbox || {};
+            if (ctx.window) ensureMockRenderSlot(ctx.window, ctx.document);
             let rewritten = String(code);
-            if (!rewritten.trimStart().startsWith('(function')) {
+            if (!/^(?:var\s+renderSlot\s*=[\s\S]*?;\s*)?\(function\b/.test(rewritten.trimStart())) {
                 const declRe = /(?:^|\n)(?:    )?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g;
                 let m;
                 while ((m = declRe.exec(rewritten)) !== null) {
@@ -305,6 +411,7 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
             return fn(ctx);
         },
         runInNewContext: (code, sandbox) => {
+            if (sandbox && sandbox.window) ensureMockRenderSlot(sandbox.window, sandbox.document);
             const keys = Object.keys(sandbox);
             const vals = keys.map(k => sandbox[k]);
             const fn = new Function(...keys, code);
@@ -328,6 +435,7 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
         document: { getElementById: () => null, addEventListener: () => {}, querySelectorAll: () => [] },
         Request: NodeRequest
     };
+    ensureMockRenderSlot(globalState.window, globalState.document);
     const globalProxy = new Proxy(globalState, {
         set(target, prop, value) {
             target[prop] = value;
@@ -353,31 +461,40 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
     });
 
     const modCache = {};
-    const requireFn = (id) => {
+    const makeRequire = (baseDir) => (id) => {
         if (id === 'assert') return assertFn;
         if (id === 'path') return pathMod;
         if (id === 'fs') return fsMod;
         if (id === 'vm') return vmMod;
-        if (modCache[id]) return modCache[id].exports;
-        const src = fsMod.readFileSync(id);
+        if (id === 'vitest') return vitestMod;
+        const resolved = resolveInFilesMap(id, baseDir);
+        if (modCache[resolved]) return modCache[resolved].exports;
+        const src = fsMod.readFileSync(resolved);
         const mod = { exports: {} };
-        modCache[id] = mod;
+        modCache[resolved] = mod;
         const win = globalState.window || {};
+        ensureMockRenderSlot(win, dynamicDoc);
         const loc = globalState.localStorage || win.localStorage || defaultLocalStorage;
         const StorageCtor = globalState.Storage || class {};
         const CustomEventCtor = globalState.CustomEvent || globalThis.CustomEvent;
+        const childDir = pathMod.dirname(resolved);
         const fn = new Function(
             'exports', 'require', 'module', 'window', 'localStorage', 'document', 'Storage', 'CustomEvent', 'Request', 'global',
             src
         );
-        fn(mod.exports, requireFn, mod, win, loc, dynamicDoc, StorageCtor, CustomEventCtor, NodeRequest, globalProxy);
+        fn(mod.exports, makeRequire(childDir), mod, win, loc, dynamicDoc, StorageCtor, CustomEventCtor, NodeRequest, globalProxy);
         return mod.exports;
     };
+    const requireFn = makeRequire(appDir);
 
     (async () => {
         try {
             const runner = new Function('require', 'process', 'global', 'Request', 'console', scriptSrc);
             await runner(requireFn, procMod, globalProxy, NodeRequest, console);
+            if (vitestSuites.length > 0) {
+                const passed = await globalThis.__runVitestSuites();
+                logs.push(`VITEST_PASSED:${passed}`);
+            }
             await new Promise(r => setTimeout(r, 120));
             if (errs.length > 0) {
                 done({ returncode: 1, stdout: logs.join('\n'), stderr: errs.join('\n') });

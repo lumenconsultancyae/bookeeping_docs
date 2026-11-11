@@ -373,6 +373,7 @@ class TestRepositoryFileLineBudget(unittest.TestCase):
     """Guardrail ensuring no tracked or modular file in either repository exceeds 550 lines."""
 
     BINARY_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".woff", ".woff2", ".mp4", ".webm"}
+    GENERATED_LOCKFILES = {"package-lock.json", "pnpm-lock.yaml", "yarn.lock"}
 
     def test_customer_pitch_deck_slides_and_video_exist(self) -> None:
         pres_dir = REPO_ROOT / "docs" / "presentations"
@@ -406,7 +407,11 @@ class TestRepositoryFileLineBudget(unittest.TestCase):
             oversized: list[str] = []
             for rel_path in proc.stdout.splitlines():
                 file_path = repo_root / rel_path
-                if not file_path.is_file() or file_path.suffix.lower() in self.BINARY_EXTENSIONS:
+                if (
+                    not file_path.is_file()
+                    or file_path.suffix.lower() in self.BINARY_EXTENSIONS
+                    or file_path.name in self.GENERATED_LOCKFILES
+                ):
                     continue
                 try:
                     line_count = len(file_path.read_text(encoding="utf-8", errors="ignore").splitlines())
