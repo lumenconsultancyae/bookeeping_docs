@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import threading
 import time
 from typing import Any, Callable
 try:
@@ -45,8 +46,7 @@ class BasePage:
     }
 
     def __init__(self, page: Page, base_url: str) -> None:
-        self.page = page
-        self.base_url = base_url
+        self.page, self.base_url, self._audit_snapshot = page, base_url, None
 
     def evaluate_script(self, script: str, *args: Any) -> Any:
         """Execute a JavaScript function body in the active Playwright page context."""
@@ -76,7 +76,7 @@ class BasePage:
                 if last_exc is not None:
                     raise PlaywrightTimeoutError(f"{msg}: {last_exc}") from last_exc
                 raise PlaywrightTimeoutError(msg)
-            time.sleep(poll_frequency)
+            threading.Event().wait(poll_frequency)
 
     def _is_document_ready(self) -> bool:
         """Return True when the active page and its async module manifest have finished booting."""
@@ -130,6 +130,8 @@ class BasePage:
             lambda p: p.locator("#view-dashboard").is_visible()
             and self._is_document_ready()
         )
+        if self._audit_snapshot is None:
+            self._audit_snapshot = self.evaluate_script("return localStorage.getItem('bookkeeping_audit_log') || '[]';")
         self.collect_severe_console_logs()
 
     def _check_welcome_ready(self, p: Page) -> bool:
@@ -454,12 +456,28 @@ class BasePage:
             """
         )
 
+    def record_settings_snapshot(self, created_resources: list[tuple[str, str]]) -> None:
+        """Capture pre-scenario `bookkeeping_settings` once per scenario so teardown restores it."""
+        if not any(kind == "settings" for kind, _ in created_resources):
+            raw_settings = self.evaluate_script("return localStorage.getItem('bookkeeping_settings') || '';")
+            created_resources.append(("settings", str(raw_settings or "")))
+
+    def isolate_employees_snapshot(self, created_resources: list[tuple[str, str]]) -> None:
+        """Snapshot and clear `bookkeeping_employees` once per scenario so payroll runs are deterministic."""
+        if not any(kind == "employees_snapshot" for kind, _ in created_resources):
+            raw_emps = self.evaluate_script("const r = localStorage.getItem('bookkeeping_employees') || '[]'; localStorage.setItem('bookkeeping_employees', '[]'); return r;")
+            created_resources.append(("employees_snapshot", str(raw_emps or "[]")))
+
     def cleanup_created_resources(self, created_resources: list[tuple[str, str]]) -> None:
         """Delete only the test-created resources recorded in `created_resources`."""
         if not created_resources:
             return
         self.dismiss_any_alert()
-        payload = json.dumps(created_resources)
+        self.evaluate_script(
+            "if (window.LumenProfiles && typeof window.LumenProfiles.flushSync === 'function') return window.LumenProfiles.flushSync();"
+        )
+        items = [*created_resources, ("audit_snapshot", str(self._audit_snapshot))] if self._audit_snapshot is not None else created_resources
+        payload = json.dumps(items)
         self.evaluate_script(
             """
             const resources = JSON.parse(arguments[0]);
@@ -468,56 +486,39 @@ class BasePage:
                 if (!raw) return;
                 try {
                     const arr = JSON.parse(raw);
-                    if (Array.isArray(arr)) {
-                        const filtered = arr.filter(item => !predicate(item));
-                        localStorage.setItem(storageKey, JSON.stringify(filtered));
-                    }
+                    if (Array.isArray(arr)) localStorage.setItem(storageKey, JSON.stringify(arr.filter(item => !predicate(item))));
                 } catch (e) {}
             };
 
             for (const [kind, identifier] of resources) {
-                if (kind === 'customer') {
-                    removeFromKey('bookkeeping_customers', c => c.name === identifier);
-                } else if (kind === 'supplier') {
-                    removeFromKey('bookkeeping_suppliers', s => s.name === identifier);
-                } else if (kind === 'inventory') {
+                if (kind === 'customer') removeFromKey('bookkeeping_customers', c => c.name === identifier);
+                else if (kind === 'supplier') removeFromKey('bookkeeping_suppliers', s => s.name === identifier);
+                else if (kind === 'inventory') {
                     removeFromKey('bookkeeping_inventory', i => i.name === identifier);
                     removeFromKey('bookkeeping_stock_ledger', l => l.productName === identifier);
-                } else if (kind === 'employee') {
-                    removeFromKey('bookkeeping_employees', e => e.name === identifier);
-                } else if (kind === 'cheque') {
-                    removeFromKey('bookkeeping_cheques', c => c.chequeNumber === identifier);
-                } else if (kind === 'coa') {
+                } else if (kind === 'employees_snapshot') localStorage.setItem('bookkeeping_employees', (identifier && identifier.trim().startsWith('[')) ? identifier : '[]');
+                else if (kind === 'audit_snapshot') localStorage.setItem('bookkeeping_audit_log', (identifier && identifier.trim().startsWith('[')) ? identifier : '[]');
+                else if (kind === 'employee') removeFromKey('bookkeeping_employees', e => e.name === identifier);
+                else if (kind === 'cheque') removeFromKey('bookkeeping_cheques', c => c.chequeNumber === identifier);
+                else if (kind === 'coa') {
                     removeFromKey('bookkeeping_coa', a => a.code === identifier);
                     removeFromKey('bookkeeping_custom_accounts', a => a.code === identifier);
                 } else if (kind === 'ledger') {
                     removeFromKey('bookkeeping_history_v2', h =>
-                        h.invoiceNum === identifier ||
-                        h.entityName === identifier ||
-                        h.description === identifier ||
-                        (h.description && h.description.includes(identifier))
+                        h.invoiceNum === identifier || h.entityName === identifier ||
+                        h.description === identifier || (h.description && h.description.includes(identifier))
                     );
-                } else if (kind === 'asset') {
-                    removeFromKey('bookkeeping_assets', a => a.description === identifier);
-                } else if (kind === 'accrual') {
-                    removeFromKey('bookkeeping_accruals', a => a.description === identifier);
-                } else if (kind === 'bank_rule') {
-                    removeFromKey('bookkeeping_bank_rules', r => r.name === identifier);
-                } else if (kind === 'bank_statement') {
-                    removeFromKey('bookkeeping_bank_statements', s => s.accountNumber === identifier || s.bankName === identifier);
-                } else if (kind === 'quote') {
-                    removeFromKey('bookkeeping_quotes', q => q.quoteNum === identifier);
-                } else if (kind === 'po') {
-                    removeFromKey('bookkeeping_pos', p => p.poNum === identifier);
-                } else if (kind === 'recurring') {
-                    removeFromKey('bookkeeping_recurring_v2', r => r.name === identifier);
-                } else if (kind === 'currency') {
-                    removeFromKey('bookkeeping_currencies', c => c.code === identifier);
-                } else if (kind === 'payroll') {
-                    localStorage.removeItem('payroll_' + identifier);
-                } else if (kind === 'closed_date') {
-                    localStorage.removeItem('bookkeeping_closed_date');
-                } else if (kind === 'budget') {
+                } else if (kind === 'asset') removeFromKey('bookkeeping_assets', a => a.description === identifier);
+                else if (kind === 'accrual') removeFromKey('bookkeeping_accruals', a => a.description === identifier);
+                else if (kind === 'bank_rule') removeFromKey('bookkeeping_bank_rules', r => r.name === identifier);
+                else if (kind === 'bank_statement') removeFromKey('bookkeeping_bank_statements', s => s.accountNumber === identifier || s.bankName === identifier);
+                else if (kind === 'quote') removeFromKey('bookkeeping_quotes', q => q.quoteNum === identifier);
+                else if (kind === 'po') removeFromKey('bookkeeping_pos', p => p.poNum === identifier);
+                else if (kind === 'recurring') removeFromKey('bookkeeping_recurring_v2', r => r.name === identifier);
+                else if (kind === 'currency') removeFromKey('bookkeeping_currencies', c => c.code === identifier);
+                else if (kind === 'payroll') localStorage.removeItem('payroll_' + identifier);
+                else if (kind === 'closed_date') localStorage.removeItem('bookkeeping_closed_date');
+                else if (kind === 'budget') {
                     const rawBudgets = localStorage.getItem('bookkeeping_budgets');
                     if (rawBudgets) {
                         try {
@@ -529,21 +530,17 @@ class BasePage:
                         } catch (e) {}
                     }
                 } else if (kind === 'settings') {
-                    localStorage.removeItem('bookkeeping_settings');
+                    const fallback = JSON.stringify({ companyName: 'Lumen Management Consultancy', companyAddress: 'Business Bay, Dubai, UAE', companyPhone: '+971 56 471 8587', companyType: 'Mainland', smallBusinessRelief: false });
+                    localStorage.setItem('bookkeeping_settings', (identifier && identifier.trim().startsWith('{')) ? identifier : fallback);
                     localStorage.removeItem('erp_settings');
-                } else if (kind === 'bank_feeds') {
-                    localStorage.removeItem('bookkeeping_bank_feeds');
-                } else if (kind === 'lang') {
+                } else if (kind === 'bank_feeds') localStorage.removeItem('bookkeeping_bank_feeds');
+                else if (kind === 'lang') {
                     if (window.LumenI18n) window.LumenI18n.setLang(identifier || 'en');
                     else localStorage.setItem('lumen_lang', identifier || 'en');
-                } else if (kind === 'expense') {
-                    removeFromKey('bookkeeping_history_v2', h =>
-                        h.expenseId === identifier || h.entityName === identifier
-                    );
-                } else if (kind === 'fx_backup') {
-                    localStorage.removeItem('bookkeeping_history_fx_backup');
-                }
+                } else if (kind === 'expense') removeFromKey('bookkeeping_history_v2', h => h.expenseId === identifier || h.entityName === identifier);
+                else if (kind === 'fx_backup') localStorage.removeItem('bookkeeping_history_fx_backup');
             }
+            if (window.LumenProfiles && typeof window.LumenProfiles.flushSync === 'function') return window.LumenProfiles.flushSync();
             """,
             payload,
         )

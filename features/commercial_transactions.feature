@@ -91,7 +91,7 @@ Feature: Commercial Transactions, AI Document Extraction, Quotes, Purchase Order
   @whatsapp_workflows
   Scenario: Sharing a bilingual AR/EN Tax Invoice + Payment Link via WhatsApp and snapping a camera receipt for Vendor TRN OCR
     When the user navigates to the "Sales Invoices" view
-    And the user fills a WhatsApp-ready customer invoice for "Al Noor Logistics LLC" with phone "050 123 4567" and payment link "https://pay.ziina.com/lumen/INV-WA" for "Express Freight" quantity "1" at rate "2000.00" AED
+    And the user fills a WhatsApp-ready customer invoice for "Lumen Digital Solutions LLC" with phone "050 123 4567" and payment link "https://pay.ziina.com/lumen/INV-WA" for "Express Freight" quantity "1" at rate "2000.00" AED
     And the user previews the customer E-Invoice
     Then the bilingual E-Invoice preview should display "فاتورة ضريبية", payment link "https://pay.ziina.com/lumen/INV-WA", and a 1-tap WhatsApp share URL for "971501234567"
     When the user navigates to the "Expenses" view

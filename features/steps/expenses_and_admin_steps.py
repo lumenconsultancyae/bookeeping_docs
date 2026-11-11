@@ -92,6 +92,7 @@ def step_fill_deferred_revenue_customer_invoice(
     )
     context.expenses_admin_page.enable_customer_invoice_deferred_revenue(months)
     context.last_invoice_num = inv_num
+    context.created_resources.append(("customer", unique_customer))
     context.created_resources.append(("ledger", inv_num))
     context.created_resources.append(("ledger", unique_customer))
     context.created_resources.append(("accrual", inv_num))
@@ -130,6 +131,7 @@ def step_post_emirate_sales_invoice(
     )
     context.expenses_admin_page.set_customer_invoice_emirate(emirate)
     context.transactions_page.submit_customer_invoice()
+    context.created_resources.append(("customer", unique_customer))
     context.created_resources.append(("ledger", inv_num))
     context.created_resources.append(("ledger", unique_customer))
 

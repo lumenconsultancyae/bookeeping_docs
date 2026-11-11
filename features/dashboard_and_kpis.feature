@@ -86,7 +86,7 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     Then the legal modal should display title "Privacy Policy" and mention "PDPL"
     When the visitor opens the "refund" legal modal on the Welcome page
     Then the legal modal should display title "Cancellation" and mention "Cancel"
-    When the visitor registers company "Al Noor Retail" with password "Lumen2026" on the "basic" plan
+    When the visitor registers company "Lumen Advisory Client" with password "Lumen2026" on the "basic" plan
     Then the "Quotes & Estimates" navigation item should be locked with a plan badge
     And physical localStorage should contain only UI configuration keys
     When the user navigates to the "Expenses" view
@@ -127,10 +127,13 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     When the user navigates to the "Settings" view
     And the user configures UAE compliance renewal dates with Trade License "DED-88441" expiring in "15" days and Establishment Card "EST-99110" expiring in "90" days
     And the user navigates to the "Employee details" view
-    And the user adds an employee "Layla Al Hashimi" with position "Operations Manager", basic salary "12000", Visa expiring in "-5" days, and Emirates ID expiring in "25" days
+    And the user adds an employee "Layla Al Hashimi" with position "Operations Manager", basic salary "12000", Visa expiring in "5" days, and Emirates ID expiring in "8" days
+    And the user adds an employee "Rashed Al Nuaimi" with position "Site Engineer", basic salary "10000", Visa expiring in "25" days, and Emirates ID expiring in "45" days
     And the user navigates to the "Dashboard" view
     Then the dashboard UAE Compliance Reminder widget should show Trade License status containing "Due in 15d" and Establishment Card status containing "Valid"
-    And the dashboard UAE Compliance Reminder widget should list employee "Layla Al Hashimi" with "Expired" and "Due in 25d" alerts
+    And the dashboard UAE Compliance Reminder widget should list employee "Layla Al Hashimi" with "Due in 5d" and "Due in 8d" alerts
+    And the dashboard UAE Compliance Reminder widget should not list employee "Rashed Al Nuaimi"
+    When a verification screenshot "dashboard_10d_compliance_reminders" is captured
 
   @smoke @pdc_reminder @sidebar_icons
   Scenario: Dashboard Upcoming PDC Cheques reminder displays supplier, clearing date, and amount and collapsed sidebar shows menu icons

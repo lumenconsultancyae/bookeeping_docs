@@ -55,45 +55,77 @@ def _get_selenium_driver():
 
 
 class _SeleniumLocatorAdapter:
-    def __init__(self, page: _SeleniumPageAdapter, selector: str) -> None:
+    _RESOLVE_JS = """
+    const resolveChain = (chain) => {
+        let nodes = [document];
+        for (const [sel, hasText] of chain) {
+            const next = [];
+            for (const root of nodes) {
+                for (const el of root.querySelectorAll(sel)) {
+                    if (!hasText || String(el.innerText ?? el.textContent ?? '').includes(hasText)) {
+                        next.push(el);
+                    }
+                }
+            }
+            nodes = next;
+        }
+        return nodes;
+    };
+    """
+
+    def __init__(self, page: _SeleniumPageAdapter, selector: str | list[tuple[str, str | None]], *, has_text: str | None = None) -> None:
         self._page = page
-        self._selector = selector
+        if isinstance(selector, list):
+            self._chain = selector
+            self._selector = selector[-1][0] if selector else ""
+        else:
+            self._chain = [(selector, has_text)]
+            self._selector = selector
 
     @property
     def first(self) -> _SeleniumLocatorAdapter:
         return self
 
+    def locator(self, selector: str, *, has_text: str | None = None) -> _SeleniumLocatorAdapter:
+        return _SeleniumLocatorAdapter(self._page, [*self._chain, (selector, has_text)])
+
     def count(self) -> int:
-        return int(self._page.evaluate("(sel) => document.querySelectorAll(sel).length", self._selector) or 0)
+        return int(self._page.evaluate(f"(chain) => {{ {self._RESOLVE_JS} return resolveChain(chain).length; }}", self._chain) or 0)
 
     def is_visible(self) -> bool:
         return bool(
             self._page.evaluate(
-                "(sel) => { const el = document.querySelector(sel); if (!el) return false; const s = getComputedStyle(el); return s.display !== 'none' && s.visibility !== 'hidden' && (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0); }",
-                self._selector,
+                f"(chain) => {{ {self._RESOLVE_JS} const el = resolveChain(chain)[0]; if (!el) return false; const s = getComputedStyle(el); return s.display !== 'none' && s.visibility !== 'hidden' && (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0); }}",
+                self._chain,
             )
         )
 
+    def click(self) -> None:
+        self._page.evaluate(
+            f"(chain) => {{ {self._RESOLVE_JS} const el = resolveChain(chain)[0]; if (!el) throw new Error('Element not found: ' + JSON.stringify(chain)); el.scrollIntoView({{ block: 'center', inline: 'nearest' }}); el.click(); }}",
+            self._chain,
+        )
+
     def inner_text(self) -> str:
-        return str(self._page.evaluate("(sel) => { const el = document.querySelector(sel); return el ? (el.innerText ?? el.textContent ?? '') : ''; }", self._selector) or "")
+        return str(self._page.evaluate(f"(chain) => {{ {self._RESOLVE_JS} const el = resolveChain(chain)[0]; return el ? (el.innerText ?? el.textContent ?? '') : ''; }}", self._chain) or "")
 
     def inner_html(self) -> str:
-        return str(self._page.evaluate("(sel) => { const el = document.querySelector(sel); return el ? (el.innerHTML ?? '') : ''; }", self._selector) or "")
+        return str(self._page.evaluate(f"(chain) => {{ {self._RESOLVE_JS} const el = resolveChain(chain)[0]; return el ? (el.innerHTML ?? '') : ''; }}", self._chain) or "")
 
     def input_value(self) -> str:
-        return str(self._page.evaluate("(sel) => { const el = document.querySelector(sel); return el ? String(el.value ?? '') : ''; }", self._selector) or "")
+        return str(self._page.evaluate(f"(chain) => {{ {self._RESOLVE_JS} const el = resolveChain(chain)[0]; return el ? String(el.value ?? '') : ''; }}", self._chain) or "")
 
     def is_checked(self) -> bool:
-        return bool(self._page.evaluate("(sel) => { const el = document.querySelector(sel); return Boolean(el && el.checked); }", self._selector))
+        return bool(self._page.evaluate(f"(chain) => {{ {self._RESOLVE_JS} const el = resolveChain(chain)[0]; return Boolean(el && el.checked); }}", self._chain))
 
     def get_attribute(self, name: str) -> str | None:
-        val = self._page.evaluate("([sel, attr]) => { const el = document.querySelector(sel); return el ? el.getAttribute(attr) : null; }", [self._selector, name])
+        val = self._page.evaluate(f"([chain, attr]) => {{ {self._RESOLVE_JS} const el = resolveChain(chain)[0]; return el ? el.getAttribute(attr) : null; }}", [self._chain, name])
         return str(val) if val is not None else None
 
     def evaluate(self, expression: str, arg: object = None) -> object:
         return self._page.evaluate(
-            f"([sel, arg]) => {{ const el = document.querySelector(sel); if (!el) throw new Error('Element not found: ' + sel); const fn = {expression}; return fn(el, arg); }}",
-            [self._selector, arg],
+            f"([chain, arg]) => {{ {self._RESOLVE_JS} const el = resolveChain(chain)[0]; if (!el) throw new Error('Element not found: ' + JSON.stringify(chain)); const fn = {expression}; return fn(el, arg); }}",
+            [self._chain, arg],
         )
 
     def set_input_files(self, file_path: str) -> None:
@@ -117,8 +149,8 @@ class _SeleniumPageAdapter:
     def close(self) -> None:
         pass
 
-    def locator(self, selector: str) -> _SeleniumLocatorAdapter:
-        return _SeleniumLocatorAdapter(self, selector)
+    def locator(self, selector: str, *, has_text: str | None = None) -> _SeleniumLocatorAdapter:
+        return _SeleniumLocatorAdapter(self, selector, has_text=has_text)
 
     def screenshot(self, *, path: str, timeout: int = 10000) -> None:
         self._driver.save_screenshot(str(path))

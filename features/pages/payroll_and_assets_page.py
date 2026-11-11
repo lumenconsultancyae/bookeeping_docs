@@ -20,6 +20,8 @@ class PayrollAndAssetsPage(BasePage):
         routing_code: str,
         basic_salary: str,
         housing_allowance: str,
+        transportation_allowance: str = "0",
+        accommodation: str = "0",
         telephone_allowance: str = "0",
         other_allowance: str = "0",
     ) -> None:
@@ -34,11 +36,18 @@ class PayrollAndAssetsPage(BasePage):
         self.fill_input("dirEmpRouting", routing_code)
         self.fill_input("dirEmpBasic", basic_salary)
         self.fill_input("dirEmpHousing", housing_allowance)
+        self.fill_input("dirEmpTransportation", transportation_allowance)
+        self.fill_input("dirEmpAccommodation", accommodation)
         self.fill_input("dirEmpTelephone", telephone_allowance)
         self.fill_input("dirEmpAllowance", other_allowance)
-        self.evaluate_script(
-            "document.getElementById('addEmployeeForm').requestSubmit();"
+        if not hasattr(self, "emp_date_displays"):
+            self.emp_date_displays = {}
+        self.emp_date_displays[name] = (
+            self.page.locator("#dirEmpDate").get_attribute("data-date-display") or ""
         )
+        if transportation_allowance != "0" or accommodation != "0":
+            self.capture_step_screenshot("employee_details_modal_form")
+        self.page.locator('#addEmployeeForm button[type="submit"]').click()
         self.accept_alert_if_present(timeout=1.5)
         self.wait_until(
             lambda p: not p.locator("#addEmployeeModal").is_visible()
@@ -62,8 +71,9 @@ class PayrollAndAssetsPage(BasePage):
         wps_employer_id: str | None = None,
         wps_routing_code: str | None = None,
         wps_employer_ref: str | None = None,
+        delete_employee_name: str | None = None,
     ) -> str | None:
-        """Open the Timesheet modal, configure pay period, account, and WPS SCR fields, preview .SIF, and save."""
+        """Open the Timesheet modal, configure pay period, account, and WPS SCR fields, optionally delete a row, preview .SIF, and save."""
         self.click_id("btnOpenTimesheetModal")
         self.wait_until(lambda p: p.locator("#timesheetModal").is_visible())
         self.fill_input("timesheetPeriod", pay_period_yyyy_mm)
@@ -77,6 +87,14 @@ class PayrollAndAssetsPage(BasePage):
             self.fill_input("wpsEmployerRoutingCode", wps_routing_code)
         if wps_employer_ref is not None:
             self.fill_input("wpsEmployerRef", wps_employer_ref)
+        if delete_employee_name:
+            self.capture_step_screenshot("timesheet_modal_before_delete_employee")
+            row_loc = self.page.locator("#timesheetBody tr.timesheet-row", has_text=delete_employee_name)
+            row_loc.locator(".ts-remove-emp").click()
+            self.wait_until(
+                lambda p: p.locator("#timesheetBody tr.timesheet-row", has_text=delete_employee_name).count() == 0
+            )
+            self.capture_step_screenshot("timesheet_modal_after_delete_employee")
         self.click_id("btnPreviewWpsSif")
         self.last_wps_sif_preview = self.get_text_by_id("wpsSifPreviewBox")
         self.click_id("btnSavePayroll")

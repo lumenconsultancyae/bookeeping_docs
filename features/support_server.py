@@ -199,7 +199,7 @@ def build_mock_ai_response(body_text: str) -> dict:
         payload = {
             "date": "2026-10-20",
             "invoiceNum": "INV-AI-2001",
-            "entityName": "Al Noor Trading LLC",
+            "entityName": "Lumen Management Consultancy",
             "trn": "100445566778803",
             "address": "Business Bay, Dubai, UAE",
             "phone": "+971-4-321-9000",

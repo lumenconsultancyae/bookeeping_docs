@@ -154,7 +154,7 @@ def step_save_company_settings(
     trn: str,
     iban: str,
 ) -> None:
-    context.created_resources.append(("settings", "bookkeeping_settings"))
+    context.base_page.record_settings_snapshot(context.created_resources)
     context.reports_page.save_company_settings(
         company_name=company_name,
         company_address="Dubai Internet City, Building 3, UAE",
@@ -167,7 +167,7 @@ def step_save_company_settings(
     'the user saves UAE tax settings for company type "{company_type}" with Small Business Relief enabled'
 )
 def step_save_tax_settings(context, company_type: str) -> None:
-    context.created_resources.append(("settings", "bookkeeping_settings"))
+    context.base_page.record_settings_snapshot(context.created_resources)
     context.reports_page.save_tax_settings(
         company_type=company_type,
         small_business_relief=True,

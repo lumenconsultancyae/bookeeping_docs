@@ -341,14 +341,9 @@ class InlineFormValidationComponentTests(unittest.TestCase):
             inp.value = '2026-11-10';
             const isoDisp = inp.getAttribute('data-date-display');
             inp.value = '15/08/26';
-            const normVal = inp.value;
-            const normDisp = inp.getAttribute('data-date-display');
             done({
                 hasExport: typeof window.LumenUI.enhanceDateInputs === 'function' && typeof window.enhanceDateInputs === 'function',
-                emptyDisp,
-                isoDisp,
-                normVal,
-                normDisp,
+                emptyDisp, isoDisp, normVal: inp.value, normDisp: inp.getAttribute('data-date-display'),
             });
         """)
         self.assertTrue(result["hasExport"])
@@ -360,12 +355,9 @@ class InlineFormValidationComponentTests(unittest.TestCase):
     def test_journal_date_filter_sorts_chronologically_and_admin_confirm_delete_resets_on_escape(self) -> None:
         from tests.js_runner import run_node_script
         import json
-        from pathlib import Path
-        web_dir = Path(__file__).resolve().parents[2] / "bookkeeping-tool"
+        web_dir = APP_DIR
         script = f"""
-        const fs = require('fs');
-        const vm = require('vm');
-        const elements = {{}};
+        const fs = require('fs'), vm = require('vm'), elements = {{}};
         const makeEl = (id) => ({{
             id, value: '', innerHTML: '', textContent: '', style: {{}}, dataset: {{}}, children: [], options: [],
             appendChild(c) {{ this.children.push(c); if (c.tagName === 'OPTION') this.options.push(c); }},
@@ -375,18 +367,10 @@ class InlineFormValidationComponentTests(unittest.TestCase):
         }});
         ['filterDate', 'historyTable', 'emptyHistory', 'historyBody'].forEach(id => {{ elements[id] = makeEl(id); }});
         const ctx = vm.createContext({{
-            window: {{
-                formatDateDdMmYy: (v) => String(v || '').replace(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}}).*/, (_, y, m, d) => `${{d}}/${{m}}/${{y.slice(-2)}}`),
-                formatCurrency: (n) => String(n)
-            }},
-            document: {{
-                getElementById: (id) => elements[id] || null,
-                querySelectorAll: () => [],
-                createElement: (tag) => makeEl(tag.toUpperCase())
-            }},
+            window: {{ formatDateDdMmYy: (v) => String(v || '').replace(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}}).*/, (_, y, m, d) => `${{d}}/${{m}}/${{y.slice(-2)}}`), formatCurrency: (n) => String(n) }},
+            document: {{ getElementById: (id) => elements[id] || null, querySelectorAll: () => [], createElement: (tag) => makeEl(tag.toUpperCase()) }},
             historyTable: elements.historyTable, emptyHistory: elements.emptyHistory, historyBody: elements.historyBody,
-            isLocked: () => false, safeNum: (n) => String(n || '0.00'),
-            localStorage: {{ getItem: () => null, setItem: () => {{}} }},
+            isLocked: () => false, safeNum: (n) => String(n || '0.00'), localStorage: {{ getItem: () => null, setItem: () => {{}} }},
             getHistory: () => [
                 {{ status: 'posted', date: '2026-02-05', description: 'Feb', account: '4100', subtotal: 100, tax: 0, total: 100, type: 'customer' }},
                 {{ status: 'posted', date: '2026-01-25', description: 'Jan', account: '4100', subtotal: 100, tax: 0, total: 100, type: 'customer' }},
@@ -412,6 +396,151 @@ class InlineFormValidationComponentTests(unittest.TestCase):
         self.assertEqual(out["dateOptions"], ["25/01/26", "05/02/26", "12/10/26"])
         self.assertTrue(out["hasResetConfirm"])
         self.assertTrue(out["hasConfirmAria"])
+
+    def test_employee_details_calendar_dd_mm_yyyy_and_allowance_fields(self) -> None:
+        views_modals = (APP_DIR / "views-modals.js").read_text(encoding="utf-8")
+        views_ops = (APP_DIR / "views-operations.js").read_text(encoding="utf-8")
+        contacts_js = (APP_DIR / "app-contacts-and-inventory.js").read_text(encoding="utf-8")
+        payroll_js = (APP_DIR / "app-payroll-and-wps.js").read_text(encoding="utf-8")
+        settings_kpis_js = (APP_DIR / "app-settings-and-kpis.js").read_text(encoding="utf-8")
+        i18n_js = (APP_DIR / "i18n.js").read_text(encoding="utf-8")
+
+        for field_id in ("dirEmpTransportation", "dirEmpAccommodation"):
+            self.assertIn(f'id="{field_id}"', views_modals)
+            self.assertIn(field_id, contacts_js)
+            self.assertIn(field_id, payroll_js)
+        self.assertIn("Transportation Allowance", views_modals)
+        self.assertIn("Accommodation", views_modals)
+        self.assertIn("<th>Transportation</th>", views_ops)
+        self.assertIn("<th>Accommodation</th>", views_ops)
+        self.assertIn("transportation", settings_kpis_js)
+        self.assertIn("accommodation", settings_kpis_js)
+        for ar_key in ("Transportation Allowance", "Transportation", "Accommodation"):
+            self.assertIn(f"'{ar_key}':", i18n_js)
+
+        for emp_date_id in ("dirEmpDate", "dirEmpVisaExpiry", "dirEmpEmiratesIdExpiry"):
+            self.assertIn(f'id="{emp_date_id}"', views_modals)
+        self.assertIn('data-date-format="dd/mm/yyyy"', views_modals)
+
+        res = self.dom.run("""
+            const form = document.createElement('form');
+            form.id = 'addEmployeeForm';
+            form.innerHTML = '<input type="date" id="dirEmpDate" data-date-format="dd/mm/yyyy">' +
+                             '<input type="date" id="dirEmpVisaExpiry" data-date-format="dd/mm/yyyy">' +
+                             '<input type="date" id="dirEmpEmiratesIdExpiry" data-date-format="dd/mm/yyyy">';
+            document.body.appendChild(form);
+            window.LumenUI.syncAllDateInputs(form);
+            const emptyDisp = document.getElementById('dirEmpDate').getAttribute('data-date-display');
+            const emptyPh = document.getElementById('dirEmpDate').getAttribute('placeholder');
+            document.getElementById('dirEmpDate').value = '2024-01-15';
+            document.getElementById('dirEmpVisaExpiry').value = '2026-11-20';
+            const setDisp = document.getElementById('dirEmpDate').getAttribute('data-date-display');
+            const visaDisp = document.getElementById('dirEmpVisaExpiry').getAttribute('data-date-display');
+            const fmtFn = typeof window.formatDateDdMmYyyy === 'function' ? window.formatDateDdMmYyyy('2026-11-20') : null;
+            done({ emptyDisp, emptyPh, setDisp, visaDisp, fmtFn });
+        """)
+        self.assertEqual(res["emptyDisp"], "dd/mm/yyyy")
+        self.assertEqual(res["emptyPh"], "dd/mm/yyyy")
+        self.assertEqual(res["setDisp"], "15/01/2024")
+        self.assertEqual(res["visaDisp"], "20/11/2026")
+        self.assertEqual(res["fmtFn"], "20/11/2026")
+
+    def test_timesheet_modal_allows_deleting_employee_row_before_saving(self) -> None:
+        views_modals = (APP_DIR / "views-modals.js").read_text(encoding="utf-8")
+        payroll_js = (APP_DIR / "app-payroll-and-wps.js").read_text(encoding="utf-8")
+
+        self.assertIn("removeTimesheetRow", payroll_js)
+        ts_modal_slice = views_modals.split('id="timesheetModal"', 1)[1].split('id="coaModal"', 1)[0]
+        self.assertIn("<th>Action</th>", ts_modal_slice)
+
+        res = self.dom.run("""
+            localStorage.setItem('bookkeeping_employees', JSON.stringify([
+                { empId: 'EMP001', name: 'Tariq Al Mansoori', basicSalary: 15000, housing: 0, transportation: 2000, accommodation: 3000, totalPay: 20000 },
+                { empId: 'EMP002', name: 'Layla Al Qasimi', basicSalary: 18000, housing: 6000, transportation: 0, accommodation: 0, totalPay: 24000 }
+            ]));
+            const modalWrap = document.createElement('div');
+            modalWrap.innerHTML = '<input type="month" id="timesheetPeriod" value="2026-10">' +
+                                  '<pre id="wpsSifPreviewBox" style="display:block;">stale</pre>' +
+                                  '<table><tbody id="timesheetBody"></tbody></table>';
+            document.body.appendChild(modalWrap);
+            window.getEmployees = () => JSON.parse(localStorage.getItem('bookkeeping_employees') || '[]');
+            window.escHtml = (s) => String(s ?? '');
+            window.formatCurrency = (n) => Number(n || 0).toFixed(2);
+            const dirEmpBody = null, addEmployeeForm = null;
+            """ + payroll_js + """
+            window.loadTimesheet();
+            const initialRows = Array.from(document.querySelectorAll('#timesheetBody .timesheet-row')).map(r => r.dataset.empId);
+            const hasDeleteBtn = Boolean(document.querySelector('#timesheetBody .timesheet-row .ts-remove-emp'));
+            done({ initialRows, hasDeleteBtn });
+        """)
+        self.assertEqual(res["initialRows"], ["EMP001", "EMP002"])
+        self.assertTrue(res["hasDeleteBtn"])
+        row_loc = self.dom.page.locator("#timesheetBody tr.timesheet-row", has_text="Layla Al Qasimi")
+        self.assertEqual(row_loc.count(), 1)
+        row_loc.locator(".ts-remove-emp").click()
+        self.assertEqual(self.dom.page.locator("#timesheetBody tr.timesheet-row", has_text="Layla Al Qasimi").count(), 0)
+        res_after = self.dom.run("""
+            const afterDeleteOne = Array.from(document.querySelectorAll('#timesheetBody .timesheet-row')).map(r => r.dataset.empId);
+            const previewHidden = document.getElementById('wpsSifPreviewBox').style.display === 'none';
+            window.removeTimesheetRow('EMP001');
+            const afterDeleteAll = document.querySelectorAll('#timesheetBody .timesheet-row').length;
+            const emptyStateText = document.getElementById('timesheetBody').textContent.trim();
+            done({ afterDeleteOne, previewHidden, afterDeleteAll, emptyStateText });
+        """)
+        self.assertEqual(res_after["afterDeleteOne"], ["EMP001"])
+        self.assertTrue(res_after["previewHidden"])
+        self.assertEqual(res_after["afterDeleteAll"], 0)
+        self.assertIn("No employees", res_after["emptyStateText"])
+
+    def test_profiles_storage_fifo_sync_chain_serializes_concurrent_state_mutations(self) -> None:
+        from tests.js_runner import run_node_script
+        import json
+
+        script = f"""
+        const fs = require('fs'), vm = require('vm');
+        const events = [];
+        let resolveFirst = null;
+        let callIdx = 0;
+        const rawStore = {{}};
+        function Storage() {{}}
+        Storage.prototype.getItem = function(k) {{ return k in rawStore ? rawStore[k] : null; }};
+        Storage.prototype.setItem = function(k, v) {{ rawStore[k] = String(v); }};
+        Storage.prototype.removeItem = function(k) {{ delete rawStore[k]; }};
+        Storage.prototype.key = function(i) {{ return Object.keys(rawStore)[i] || null; }};
+        Object.defineProperty(Storage.prototype, 'length', {{ get() {{ return Object.keys(rawStore).length; }} }});
+        const localStorage = new Storage(), sessionStorage = new Storage();
+        const win = {{
+            location: {{ protocol: 'http:', pathname: '/welcome', href: 'http://localhost/welcome' }},
+            localStorage, sessionStorage, Storage,
+            fetch: (url, opts) => {{
+                callIdx++;
+                const idx = callIdx;
+                const payload = JSON.parse(opts.body || '{{}}');
+                events.push(`start:${{idx}}:${{Object.values(payload.set || {{}})[0]}}`);
+                if (idx === 1) {{
+                    return new Promise((r) => {{ resolveFirst = () => {{ events.push(`end:${{idx}}`); r({{ ok: true }}); }}; }});
+                }}
+                events.push(`end:${{idx}}`);
+                return Promise.resolve({{ ok: true }});
+            }}
+        }};
+        const ctx = vm.createContext({{ window: win, localStorage, sessionStorage, Storage, fetch: win.fetch, Date, Math, Number, String, Object, Array, JSON, Map, Set, Promise, RegExp, isNaN }});
+        vm.runInContext(fs.readFileSync({json.dumps(str(APP_DIR / "profiles-storage.js"))}, 'utf8'), ctx);
+        return (async () => {{
+            localStorage.setItem('bookkeeping_settings', 'v1');
+            localStorage.setItem('bookkeeping_settings', 'v2');
+            await new Promise((r) => setTimeout(r, 15));
+            const beforeFirstResolves = [...events];
+            resolveFirst();
+            await win.LumenProfiles.flushSync();
+            console.log(JSON.stringify({{ beforeFirstResolves, finalEvents: events }}));
+        }})();
+        """
+        proc = run_node_script(script, APP_DIR)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(out["beforeFirstResolves"], ["start:1:v1"])
+        self.assertEqual(out["finalEvents"], ["start:1:v1", "end:1", "start:2:v2", "end:2"])
 
 
 if __name__ == "__main__":

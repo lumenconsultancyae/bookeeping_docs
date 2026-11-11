@@ -96,17 +96,16 @@ class DashboardPage(BasePage):
         eid_expiry: str,
     ) -> None:
         """Open `#addEmployeeModal`, fill employee and Visa/EID expiry dates, and submit."""
-        self.evaluate_script("window.openAddEmployeeModal();")
+        self.click_id("btnOpenAddEmployee")
         self.wait_until(lambda p: p.locator("#addEmployeeModal").is_visible())
         self.fill_input("dirEmpName", name)
         self.fill_input("dirEmpPosition", position)
         self.fill_input("dirEmpBasic", basic_salary)
         self.fill_input("dirEmpVisaExpiry", visa_expiry)
         self.fill_input("dirEmpEmiratesIdExpiry", eid_expiry)
-        self.evaluate_script(
-            "document.querySelector('#addEmployeeForm button[type=\"submit\"]').click();"
-        )
+        self.page.locator('#addEmployeeForm button[type="submit"]').click()
         self.dismiss_any_alert()
+        self.wait_until(lambda p: not p.locator("#addEmployeeModal").is_visible())
 
     def get_compliance_reminder_summary(self) -> dict[str, str]:
         """Return the live status texts displayed in `#uaeComplianceReminderCard`."""

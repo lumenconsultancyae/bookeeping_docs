@@ -73,6 +73,7 @@ class UAEComplianceRemindersUnitTests(unittest.TestCase):
             "renderWidget",
             "URGENT_THRESHOLD_DAYS",
             "WARNING_THRESHOLD_DAYS",
+            "EMPLOYEE_EXPIRY_THRESHOLD_DAYS",
         ):
             self.assertIn(sym, reminder_js)
 
@@ -85,8 +86,9 @@ class UAEComplianceRemindersUnitTests(unittest.TestCase):
         ):
             self.assertIn(field_id, script_bundle)
         payroll_js = (APP_DIR / "app-payroll-and-wps.js").read_text(encoding="utf-8")
-        self.assertIn("window.formatDateDdMmYy(e.visaExpiry)", payroll_js)
-        self.assertIn("window.formatDateDdMmYy(e.emiratesIdExpiry)", payroll_js)
+        self.assertIn("window.formatDateDdMmYyyy(e.visaExpiry)", payroll_js)
+        self.assertIn("window.formatDateDdMmYyyy(e.emiratesIdExpiry)", payroll_js)
+        self.assertIn("window.formatDateDdMmYyyy(e.dateHired)", payroll_js)
         self.assertIn("escHtml(e.name", payroll_js)
 
     def test_compliance_reminders_executes_behaviorally_in_node(self) -> None:
@@ -114,6 +116,7 @@ global.window = {
 };
 
 const UAEComplianceReminders = require(path.join(appDir, 'compliance-reminders.js'));
+assert.strictEqual(UAEComplianceReminders.EMPLOYEE_EXPIRY_THRESHOLD_DAYS, 10);
 
 // 1. Unconfigured state
 const emptyEval = UAEComplianceReminders.evaluate({
@@ -125,7 +128,7 @@ assert.strictEqual(emptyEval.overallStatus, 'setup_needed');
 assert.strictEqual(emptyEval.tradeLicense.status, 'not_set');
 assert.strictEqual(emptyEval.establishmentCard.status, 'not_set');
 
-// 2. Mixed urgent / expired / warning / valid state
+// 2. Mixed state: employee alerts ONLY include EID & Visa expiring within 0..10 days before expiry
 const mixedEval = UAEComplianceReminders.evaluate({
     settings: {
         companyName: 'Lumen Trading LLC',
@@ -138,14 +141,20 @@ const mixedEval = UAEComplianceReminders.evaluate({
         {
             empId: 'EMP001',
             name: 'Omar Al Mansoori',
-            visaExpiry: '2026-12-20', // 45 days remaining (<= 60d warning)
+            visaExpiry: '2026-12-20', // 45 days remaining (> 10d -> excluded from employeeAlerts)
             emiratesIdExpiry: '2027-06-01' // > 60d valid
         },
         {
             empId: 'EMP002',
             name: 'Sara Khan',
-            visaExpiry: '2026-10-26', // 10 days expired
-            emiratesIdExpiry: '2026-11-20' // 15 days remaining (<= 30d urgent)
+            visaExpiry: '2026-11-12', // 7 days remaining (<= 10d -> included in employeeAlerts)
+            emiratesIdExpiry: '2026-11-20' // 15 days remaining (> 10d -> excluded from employeeAlerts)
+        },
+        {
+            empId: 'EMP003',
+            name: 'Past Expired Employee',
+            visaExpiry: '2026-10-26', // -10 days (< 0d -> excluded from 0..10d before expiry window)
+            emiratesIdExpiry: '2026-11-15' // 10 days remaining (<= 10d -> included in employeeAlerts)
         }
     ],
     referenceDate: '2026-11-05'
@@ -155,14 +164,13 @@ assert.strictEqual(mixedEval.tradeLicense.status, 'expired');
 assert.strictEqual(mixedEval.tradeLicense.daysRemaining, -5);
 assert.strictEqual(mixedEval.establishmentCard.status, 'expiring_30');
 assert.strictEqual(mixedEval.establishmentCard.daysRemaining, 20);
-assert.strictEqual(mixedEval.expiredCount, 2); // Trade License + Sara Visa
-assert.strictEqual(mixedEval.urgent30Count, 2); // Est Card + Sara EID
-assert.strictEqual(mixedEval.warning60Count, 1); // Omar Visa
-assert.strictEqual(mixedEval.validCount, 1); // Omar EID
-assert.strictEqual(mixedEval.employeeAlertsCount, 3); // Sara Visa, Sara EID, Omar Visa
+assert.strictEqual(mixedEval.employeeAlertsCount, 2); // Sara Visa (7d) + Past Expired Employee EID (10d)
+assert(mixedEval.employeeAlerts.some(i => i.employeeName === 'Sara Khan' && i.docType === 'Visa' && i.daysRemaining === 7));
+assert(mixedEval.employeeAlerts.some(i => i.employeeName === 'Past Expired Employee' && i.docType === 'Emirates ID' && i.daysRemaining === 10));
+assert(!mixedEval.employeeAlerts.some(i => i.daysRemaining > 10 || i.daysRemaining < 0));
 assert.strictEqual(mixedEval.overallStatus, 'action_required');
 
-// 3. All compliant state
+// 3. All compliant state (and employees > 10d are NOT shown on dashboard list)
 const compliantEval = UAEComplianceReminders.evaluate({
     settings: {
         tradeLicenseNumber: 'DED-778899',
@@ -174,19 +182,22 @@ const compliantEval = UAEComplianceReminders.evaluate({
         {
             empId: 'EMP001',
             name: 'Omar Al Mansoori',
-            visaExpiry: '2027-10-10',
+            visaExpiry: '2026-11-25', // 20 days remaining (> 10d)
             emiratesIdExpiry: '2027-10-10'
         }
     ],
     referenceDate: '2026-11-05'
 });
 assert.strictEqual(compliantEval.overallStatus, 'all_compliant');
-assert.strictEqual(compliantEval.expiredCount, 0);
-assert.strictEqual(compliantEval.urgent30Count, 0);
-assert.strictEqual(compliantEval.warning60Count, 0);
 assert.strictEqual(compliantEval.employeeAlertsCount, 0);
+UAEComplianceReminders.renderWidget({
+    settings: { tradeLicenseExpiry: '2027-08-15', establishmentCardExpiry: '2027-09-01' },
+    employees: [{ empId: 'EMP001', name: 'Omar Al Mansoori', visaExpiry: '2026-11-25', emiratesIdExpiry: '2027-10-10' }],
+    referenceDate: '2026-11-05'
+});
+assert(!elements['compEmployeeAlertsList'].innerHTML.includes('Omar Al Mansoori'), 'Employees with EID/Visa > 10 days must not be shown on dashboard');
 
-// 4. DOM rendering verification with XSS escaping
+// 4. DOM rendering verification with XSS escaping for 10-day expiring item
 store['bookkeeping_settings'] = JSON.stringify({
     tradeLicenseNumber: 'CN-9001',
     tradeLicenseExpiry: '2026-11-20',
@@ -197,7 +208,13 @@ store['bookkeeping_employees'] = JSON.stringify([
     {
         empId: 'EMP001',
         name: 'Tariq <script>evil()</script>',
-        visaExpiry: '2026-11-15',
+        visaExpiry: '2026-11-15', // 10 days remaining
+        emiratesIdExpiry: '2027-08-01'
+    },
+    {
+        empId: 'EMP002',
+        name: 'FarFuture Employee',
+        visaExpiry: '2026-11-25', // 20 days remaining (> 10d)
         emiratesIdExpiry: '2027-08-01'
     }
 ]);
@@ -207,6 +224,7 @@ assert.strictEqual(elements['compTradeLicenseExpiry'].textContent, '20/11/26');
 assert(elements['compEstCardBadge'].textContent.includes('Valid'));
 assert(!elements['compEmployeeAlertsList'].innerHTML.includes('<script>evil()</script>'));
 assert(elements['compEmployeeAlertsList'].innerHTML.includes('&lt;script&gt;evil()&lt;/script&gt;'));
+assert(!elements['compEmployeeAlertsList'].innerHTML.includes('FarFuture Employee'));
 
 console.log(JSON.stringify({ status: 'ok' }));
 """

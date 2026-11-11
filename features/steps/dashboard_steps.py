@@ -89,6 +89,7 @@ def _offset_date_iso(days_offset: int) -> str:
 
 @when('the user configures UAE compliance renewal dates with Trade License "{tl_num}" expiring in "{tl_days}" days and Establishment Card "{est_num}" expiring in "{est_days}" days')
 def step_configure_company_compliance_dates(context, tl_num: str, tl_days: str, est_num: str, est_days: str) -> None:
+    context.base_page.record_settings_snapshot(context.created_resources)
     context.dashboard_page.configure_company_compliance_dates(
         trade_license_num=tl_num,
         trade_license_expiry=_offset_date_iso(int(tl_days)),
@@ -108,6 +109,9 @@ def step_add_employee_with_compliance_dates(
 ) -> None:
     unique_name = f"{emp_name} {context.scenario_uid}"
     context.compliance_emp_name = unique_name
+    if not hasattr(context, "compliance_emp_map"):
+        context.compliance_emp_map = {}
+    context.compliance_emp_map[emp_name] = unique_name
     context.created_resources.append(("employee", unique_name))
     context.dashboard_page.add_employee_with_compliance_dates(
         name=unique_name,
@@ -133,7 +137,8 @@ def step_verify_compliance_tl_and_est_status(context, expected_tl: str, expected
 def step_verify_compliance_employee_alerts(context, emp_name: str, alert_one: str, alert_two: str) -> None:
     summary = context.dashboard_page.get_compliance_reminder_summary()
     list_text = summary["employee_list_text"]
-    expected_name = getattr(context, "compliance_emp_name", emp_name)
+    emp_map = getattr(context, "compliance_emp_map", {})
+    expected_name = emp_map.get(emp_name, getattr(context, "compliance_emp_name", emp_name))
     assert expected_name in list_text, (
         f"Expected employee '{expected_name}' in compliance alerts list, got '{list_text}'"
     )
@@ -142,6 +147,17 @@ def step_verify_compliance_employee_alerts(context, emp_name: str, alert_one: st
     )
     assert alert_two in list_text, (
         f"Expected alert '{alert_two}' in compliance alerts list, got '{list_text}'"
+    )
+
+
+@then('the dashboard UAE Compliance Reminder widget should not list employee "{excluded_emp}"')
+def step_verify_compliance_employee_excluded(context, excluded_emp: str) -> None:
+    summary = context.dashboard_page.get_compliance_reminder_summary()
+    list_text = summary["employee_list_text"]
+    emp_map = getattr(context, "compliance_emp_map", {})
+    excluded_name = emp_map.get(excluded_emp, excluded_emp)
+    assert excluded_name not in list_text, (
+        f"Expected employee '{excluded_name}' (>10d before expiry) to be excluded from dashboard compliance alerts, got '{list_text}'"
     )
 
 

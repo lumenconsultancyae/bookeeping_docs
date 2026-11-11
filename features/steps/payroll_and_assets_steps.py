@@ -16,6 +16,7 @@ def step_add_employee(
     basic: str,
     housing: str,
 ) -> None:
+    context.base_page.isolate_employees_snapshot(context.created_resources)
     unique_name = f"{emp_name} {context.scenario_uid}"
     context.last_employee_name = unique_name
     if not hasattr(context, "employee_name_map"):
@@ -35,17 +36,56 @@ def step_add_employee(
     )
 
 
-@then('the Employee Directory should list "{emp_name}" with total pay "{expected_total}"')
-def step_verify_employee_in_directory(
+@when(
+    'the user adds an employee named "{emp_name}" as "{position}" hired on "{date_hired}" with basic salary "{basic}", transportation allowance "{transportation}", and accommodation "{accommodation}"'
+)
+def step_add_employee_with_transport_and_accommodation(
     context,
     emp_name: str,
+    position: str,
+    date_hired: str,
+    basic: str,
+    transportation: str,
+    accommodation: str,
+) -> None:
+    context.base_page.isolate_employees_snapshot(context.created_resources)
+    unique_name = f"{emp_name} {context.scenario_uid}"
+    context.last_employee_name = unique_name
+    if not hasattr(context, "employee_name_map"):
+        context.employee_name_map = {}
+    context.employee_name_map[emp_name] = unique_name
+    context.created_resources.append(("employee", unique_name))
+
+    context.payroll_page.add_employee(
+        name=unique_name,
+        position=position,
+        date_hired=date_hired,
+        labour_card=f"LC-{context.scenario_uid[:6]}",
+        iban="AE070331234567890123456",
+        routing_code="302620122",
+        basic_salary=basic,
+        housing_allowance="0",
+        transportation_allowance=transportation,
+        accommodation=accommodation,
+    )
+
+
+@then('the Employee Directory should list "{emp_name}" with hired date "{expected_date}" and total pay "{expected_total}"')
+def step_verify_employee_date_and_total_in_directory(
+    context,
+    emp_name: str,
+    expected_date: str,
     expected_total: str,
 ) -> None:
     unique_names = getattr(context, "employee_name_map", {})
     unique_name = unique_names.get(emp_name, getattr(context, "last_employee_name", emp_name))
     table_text = context.payroll_page.get_employee_directory_text()
-    assert unique_name in table_text and expected_total in table_text, (
-        f"Expected employee '{unique_name}' with total pay '{expected_total}' in directory, got:\n{table_text}"
+    actual_disp = getattr(context.payroll_page, "emp_date_displays", {}).get(unique_name, "")
+    assert actual_disp == expected_date, (
+        f"Expected calendar input display '{expected_date}', got '{actual_disp}'"
+    )
+    assert unique_name in table_text and expected_date in table_text and expected_total in table_text, (
+        f"Expected employee '{unique_name}' with date '{expected_date}' and total pay '{expected_total}' in directory, got:\n{table_text}"
     )
 
 
@@ -77,6 +117,31 @@ def step_process_and_save_payroll(
         wps_employer_id="1002233445566",
         wps_routing_code="302620122",
         wps_employer_ref=f"WPS-{period}",
+    )
+
+
+@when(
+    'the user processes and saves the payroll run for period "{period}" paid from "{payment_account}" with EOSB accrual enabled after deleting employee "{deleted_emp}" from the timesheet'
+)
+def step_process_and_save_payroll_after_deleting_employee(
+    context,
+    period: str,
+    payment_account: str,
+    deleted_emp: str,
+) -> None:
+    context.created_resources.append(("payroll", period))
+    for prefix in ("Payroll Gross", "Payroll Net", "Payroll Loans", "Payroll Deductions", "EOSB Accrual"):
+        context.created_resources.append(("ledger", f"{prefix} {period}"))
+    unique_names = getattr(context, "employee_name_map", {})
+    delete_unique_name = unique_names.get(deleted_emp, deleted_emp)
+    context.payroll_page.process_and_save_payroll(
+        pay_period_yyyy_mm=period,
+        payment_account=payment_account,
+        accrue_eosb=True,
+        wps_employer_id="1002233445566",
+        wps_routing_code="302620122",
+        wps_employer_ref=f"WPS-{period}",
+        delete_employee_name=delete_unique_name,
     )
 
 
@@ -186,11 +251,12 @@ def step_configure_company_branding(
     company_address: str,
     company_phone: str,
 ) -> None:
+    context.base_page.record_settings_snapshot(context.created_resources)
     logo_svg_data_uri = (
         "data:image/svg+xml;utf8,"
         "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='40'>"
         "<rect width='120' height='40' rx='6' fill='%230f172a'/>"
-        "<text x='14' y='25' fill='%23ffffff' font-family='sans-serif' font-size='14' font-weight='bold'>AL NOOR</text>"
+        "<text x='18' y='25' fill='%23ffffff' font-family='sans-serif' font-size='14' font-weight='bold'>LUMEN</text>"
         "</svg>"
     )
     context.payroll_page.configure_company_branding(
