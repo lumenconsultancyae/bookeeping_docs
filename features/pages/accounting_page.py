@@ -109,7 +109,15 @@ class AccountingPage(BasePage):
             ref_or_desc,
         )
         if entry_id is not None:
-            self.evaluate_script("window.deleteEntry(arguments[0]);", entry_id)
+            self.evaluate_script(
+                """
+                const sel = Array.from(document.querySelectorAll('#historyBody select.action-dropdown'))
+                    .find(s => !s.disabled && (s.getAttribute('onchange') || '').includes(String(arguments[0])));
+                if (sel) { sel.value = 'delete'; sel.dispatchEvent(new Event('change', {bubbles: true})); }
+                else window.deleteEntry(arguments[0]);
+                """,
+                entry_id,
+            )
         return self.accept_alert_if_present(timeout=3.0)
 
     # --- Accruals (`#view-accrual`) ---

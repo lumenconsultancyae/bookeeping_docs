@@ -36,6 +36,13 @@ Feature: Chart of Accounts, Manual Journal Entries, Accruals, and Period Locking
     Then the system should block the deletion with a closed period warning
     And the General Ledger should still contain the locked journal entry
 
+  Scenario: Deleting an unlocked journal entry from Full Ledger History removes it permanently
+    When the user posts a balanced journal entry of "850.00" AED from "6000 Office Supplies" to "1100 Bank Account" dated "2026-04-15"
+    And the user navigates to the "General Ledger" view
+    Then the General Ledger should contain the posted journal entry
+    When the user deletes the unlocked journal entry from the General Ledger
+    Then the General Ledger should not contain the deleted journal entry
+
   @accrual @usage
   Scenario: Tracking 2150 Deferred Revenue with Usage / Drawdown recognition updates accumulated and remaining balances
     When the user navigates to the "Accruals" view

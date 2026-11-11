@@ -6,7 +6,12 @@ import json
 from pathlib import Path
 import time
 from typing import Any, Callable
-from playwright.sync_api import Error as PlaywrightError, Page, TimeoutError as PlaywrightTimeoutError
+try:
+    from playwright.sync_api import Error as PlaywrightError, Page, TimeoutError as PlaywrightTimeoutError
+except ModuleNotFoundError:  # pragma: no cover - fallback when running via Selenium adapter
+    PlaywrightError = Exception  # type: ignore[misc,assignment]
+    PlaywrightTimeoutError = TimeoutError  # type: ignore[misc,assignment]
+    Page = Any  # type: ignore[misc,assignment]
 
 from features.config import DEFAULT_TIMEOUT_SECONDS, POLL_FREQUENCY_SECONDS, SCREENSHOTS_DIR
 

@@ -31,6 +31,7 @@ bookeeping_docs/
 │   ├── test_agy_service.py                          # Unit & HTTP integration tests for agy_service.py
 │   ├── test_auth_and_welcome.py                     # Auth, multi-tenant isolation, plan gating & edge proxy tests
 │   ├── test_faf_export.py                           # FTA VAT 201, FAF CSV, Credit Notes, PINT-AE XML, CT Tracker & XSS tests
+│   ├── test_ledger_and_timesheet_deletion.py        # Full Ledger History deletion & Timesheets & WPS timeline deletion tests
 │   ├── test_payslip_and_timesheet_filter.py         # Professional Payslip, Timesheet employee filter, Payroll P&L & Welcome pricing tests
 │   ├── test_provisioning.py                         # Unit & CLI tests for AWS/Cloudflare provisioning
 │   ├── test_provisioning_clients.py                 # Extended SigV4, Cloudflare/EC2 idempotency & repo hygiene tests

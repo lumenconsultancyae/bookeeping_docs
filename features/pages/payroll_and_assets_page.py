@@ -183,6 +183,18 @@ class PayrollAndAssetsPage(BasePage):
         self.page.locator("#modalFooter .btn-secondary").evaluate("el => el.click()")
         return result
 
+    def delete_saved_timesheet_from_edit_modal(self, period: str) -> str | None:
+        """Open the Edit Details modal for `period`, click `#btnDeleteTimesheet`, and confirm deletion."""
+        self.evaluate_script("window.openTimesheetModal(arguments[0]);", period)
+        self.wait_until(
+            lambda p: p.locator("#timesheetModal").is_visible()
+            and p.locator("#btnDeleteTimesheet").is_visible()
+        )
+        self.click_id("btnDeleteTimesheet")
+        alert_text = self.accept_alert_if_present(timeout=3.0)
+        self.wait_until(lambda p: not p.locator("#timesheetModal").is_visible())
+        return alert_text
+
     # --- Fixed Assets (`#view-assets`) ---
 
     def register_fixed_asset_and_render(

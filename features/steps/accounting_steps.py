@@ -197,6 +197,21 @@ def step_verify_locked_entry_remains(context) -> None:
     )
 
 
+@when("the user deletes the unlocked journal entry from the General Ledger")
+def step_delete_unlocked_entry(context) -> None:
+    context.delete_alert = context.accounting_page.attempt_delete_ledger_entry_by_ref(
+        context.last_journal_desc
+    )
+
+
+@then("the General Ledger should not contain the deleted journal entry")
+def step_verify_deleted_entry_removed(context) -> None:
+    ledger_text = context.accounting_page.get_ledger_table_text()
+    assert context.last_journal_desc not in ledger_text, (
+        f"Expected deleted entry '{context.last_journal_desc}' to be removed from General Ledger, got:\n{ledger_text[:500]}"
+    )
+
+
 @when(
     'the user creates a usage-based accrual schedule for "{desc}" of "{amount}" AED debiting "{debit_account}" and crediting "{credit_account}" starting "{start_date}"'
 )

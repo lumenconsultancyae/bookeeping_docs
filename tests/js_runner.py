@@ -11,11 +11,17 @@ import subprocess
 _PLAYWRIGHT = None
 _BROWSER = None
 _PAGE = None
+_SELENIUM_DRIVER = None
 
 
 def _shutdown_playwright() -> None:
-    global _PAGE, _BROWSER, _PLAYWRIGHT
-    for resource, method in ((_PAGE, "close"), (_BROWSER, "close"), (_PLAYWRIGHT, "stop")):
+    global _PAGE, _BROWSER, _PLAYWRIGHT, _SELENIUM_DRIVER
+    for resource, method in (
+        (_PAGE, "close"),
+        (_BROWSER, "close"),
+        (_PLAYWRIGHT, "stop"),
+        (_SELENIUM_DRIVER, "quit"),
+    ):
         if resource is not None:
             try:
                 getattr(resource, method)()
@@ -24,13 +30,127 @@ def _shutdown_playwright() -> None:
     _PAGE = None
     _BROWSER = None
     _PLAYWRIGHT = None
+    _SELENIUM_DRIVER = None
+
+
+def _get_selenium_driver():
+    global _SELENIUM_DRIVER
+    if _SELENIUM_DRIVER is not None:
+        return _SELENIUM_DRIVER
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+
+    opts = Options()
+    opts.set_capability("goog:loggingPrefs", {"browser": "ALL"})
+    for arg in ("--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"):
+        opts.add_argument(arg)
+    if Path("/usr/bin/chromium").exists():
+        opts.binary_location = "/usr/bin/chromium"
+    service = Service("/usr/bin/chromedriver") if Path("/usr/bin/chromedriver").exists() else Service()
+    _SELENIUM_DRIVER = webdriver.Chrome(service=service, options=opts)
+    _SELENIUM_DRIVER.set_script_timeout(30)
+    atexit.register(_shutdown_playwright)
+    return _SELENIUM_DRIVER
+
+
+class _SeleniumLocatorAdapter:
+    def __init__(self, page: _SeleniumPageAdapter, selector: str) -> None:
+        self._page = page
+        self._selector = selector
+
+    @property
+    def first(self) -> _SeleniumLocatorAdapter:
+        return self
+
+    def count(self) -> int:
+        return int(self._page.evaluate("(sel) => document.querySelectorAll(sel).length", self._selector) or 0)
+
+    def is_visible(self) -> bool:
+        return bool(
+            self._page.evaluate(
+                "(sel) => { const el = document.querySelector(sel); if (!el) return false; const s = getComputedStyle(el); return s.display !== 'none' && s.visibility !== 'hidden' && (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0); }",
+                self._selector,
+            )
+        )
+
+    def inner_text(self) -> str:
+        return str(self._page.evaluate("(sel) => { const el = document.querySelector(sel); return el ? (el.innerText ?? el.textContent ?? '') : ''; }", self._selector) or "")
+
+    def inner_html(self) -> str:
+        return str(self._page.evaluate("(sel) => { const el = document.querySelector(sel); return el ? (el.innerHTML ?? '') : ''; }", self._selector) or "")
+
+    def input_value(self) -> str:
+        return str(self._page.evaluate("(sel) => { const el = document.querySelector(sel); return el ? String(el.value ?? '') : ''; }", self._selector) or "")
+
+    def is_checked(self) -> bool:
+        return bool(self._page.evaluate("(sel) => { const el = document.querySelector(sel); return Boolean(el && el.checked); }", self._selector))
+
+    def get_attribute(self, name: str) -> str | None:
+        val = self._page.evaluate("([sel, attr]) => { const el = document.querySelector(sel); return el ? el.getAttribute(attr) : null; }", [self._selector, name])
+        return str(val) if val is not None else None
+
+    def evaluate(self, expression: str, arg: object = None) -> object:
+        return self._page.evaluate(
+            f"([sel, arg]) => {{ const el = document.querySelector(sel); if (!el) throw new Error('Element not found: ' + sel); const fn = {expression}; return fn(el, arg); }}",
+            [self._selector, arg],
+        )
+
+    def set_input_files(self, file_path: str) -> None:
+        from selenium.webdriver.common.by import By
+
+        self._page._driver.find_element(By.CSS_SELECTOR, self._selector).send_keys(str(file_path))
+
+
+class _SeleniumPageAdapter:
+    def __init__(self, driver) -> None:
+        self._driver = driver
+        self._severe_logs: list[dict[str, str]] = []
+
+    @property
+    def url(self) -> str:
+        return str(self._driver.current_url or "")
+
+    def is_closed(self) -> bool:
+        return False
+
+    def close(self) -> None:
+        pass
+
+    def locator(self, selector: str) -> _SeleniumLocatorAdapter:
+        return _SeleniumLocatorAdapter(self, selector)
+
+    def screenshot(self, *, path: str, timeout: int = 10000) -> None:
+        self._driver.save_screenshot(str(path))
+
+    def emulate_media(self, *, media: str = "screen") -> None:
+        self._driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {"media": str(media)})
+
+    def set_viewport_size(self, size: dict[str, int]) -> None:
+        self._driver.execute_cdp_cmd(
+            "Emulation.setDeviceMetricsOverride",
+            {"width": int(size["width"]), "height": int(size["height"]), "deviceScaleFactor": 1, "mobile": False},
+        )
+
+    def goto(self, url: str, wait_until: str | None = None) -> None:
+        self._driver.get(url)
+
+    def evaluate(self, expression: str, arg: object = None) -> object:
+        return self._driver.execute_async_script(
+            f"const fn = {expression}; const cb = arguments[arguments.length - 1]; Promise.resolve(fn(arguments[0])).then(cb);",
+            arg,
+        )
 
 
 def _get_playwright_page():
     global _PLAYWRIGHT, _BROWSER, _PAGE
     if _PAGE is not None and not _PAGE.is_closed():
         return _PAGE
-    from playwright.sync_api import sync_playwright
+    try:
+        from playwright.sync_api import sync_playwright
+    except ModuleNotFoundError:
+        _PAGE = _SeleniumPageAdapter(_get_selenium_driver())
+        return _PAGE
 
     _PLAYWRIGHT = sync_playwright().start()
     launch_kwargs: dict[str, object] = {
@@ -64,8 +184,6 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
         files_map[str(js_file.resolve())] = js_file.read_text(encoding="utf-8")
         files_map[str(js_file)] = files_map[str(js_file.resolve())]
 
-    page = _get_playwright_page()
-    page.goto("about:blank")
     harness = r"""
     ([scriptSrc, appDir, filesMap]) => new Promise((done) => {
     const logs = [];
@@ -243,6 +361,8 @@ def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProc
     })();
     })
     """
+    page = _get_playwright_page()
+    page.goto("about:blank")
     res = page.evaluate(harness, [node_script, str(app_dir), files_map])
     return subprocess.CompletedProcess(
         args=["node", "-e", node_script],

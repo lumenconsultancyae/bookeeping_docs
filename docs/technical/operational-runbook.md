@@ -124,7 +124,7 @@
    python3 -B -m unittest discover -s tests -v
    behave
    ```
-   - **Expected Output**: 100% passing unit, HTTP integration, and browser DOM behavioral tests (`tests/test_agy_service.py`, `tests/test_provisioning.py`, `tests/test_provisioning_clients.py`, `tests/test_auth_and_welcome.py`, `tests/test_faf_export.py`, `tests/test_payslip_and_timesheet_filter.py`, `tests/test_react_migration.py`, `tests/test_uae_compliance.py`, `tests/test_ui_feedback_and_forms.py`, `tests/test_ui_tables_and_layout.py`, and `tests/test_whatsapp_workflows.py`), 8 features passed (41 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
+   - **Expected Output**: 100% passing unit, HTTP integration, and browser DOM behavioral tests (`tests/test_agy_service.py`, `tests/test_provisioning.py`, `tests/test_provisioning_clients.py`, `tests/test_auth_and_welcome.py`, `tests/test_faf_export.py`, `tests/test_ledger_and_timesheet_deletion.py`, `tests/test_payslip_and_timesheet_filter.py`, `tests/test_react_migration.py`, `tests/test_uae_compliance.py`, `tests/test_ui_feedback_and_forms.py`, `tests/test_ui_tables_and_layout.py`, and `tests/test_whatsapp_workflows.py`), 8 features passed (41 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
 
 ---
 

@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 import urllib.request
 import uuid
-from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
+try:
+    from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
+except ModuleNotFoundError:  # pragma: no cover - fallback when running via Selenium adapter
+    Browser = BrowserContext = Page = Playwright = Any  # type: ignore[misc,assignment]
+    sync_playwright = None  # type: ignore[assignment]
 
 from features.config import (
     BASE_URL,
@@ -52,6 +57,12 @@ def _attach_console_listeners(page: Page) -> None:
 
 
 def _build_playwright_page(pw: Playwright) -> tuple[Browser, BrowserContext, Page]:
+    if sync_playwright is None or pw is None:
+        from tests.js_runner import _get_playwright_page
+
+        page = _get_playwright_page()
+        page.set_viewport_size({"width": 1440, "height": 900})
+        return None, None, page
     browser = pw.chromium.launch(
         executable_path=CHROMIUM_BINARY,
         headless=HEADLESS,
@@ -97,7 +108,7 @@ def before_all(context) -> None:
         if resp.status != 200:
             raise RuntimeError(f"Pre-flight health check failed on {BASE_URL}: HTTP {resp.status}")
 
-    context.playwright = sync_playwright().start()
+    context.playwright = sync_playwright().start() if sync_playwright is not None else None
     context.browser, context.browser_context, context.page = _build_playwright_page(
         context.playwright
     )

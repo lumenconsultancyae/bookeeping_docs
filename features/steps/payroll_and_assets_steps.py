@@ -130,6 +130,27 @@ def step_verify_saved_timesheet(context, period: str, emp_name: str) -> None:
     )
 
 
+@when('the user deletes the saved timesheet for period "{period}" from the Edit Details modal')
+def step_delete_saved_timesheet_from_edit_modal(context, period: str) -> None:
+    context.last_timesheet_delete_alert = (
+        context.payroll_page.delete_saved_timesheet_from_edit_modal(period)
+    )
+
+
+@then('the saved timesheets section for "{period}" should not list "{emp_name}"')
+def step_verify_saved_timesheet_deleted(context, period: str, emp_name: str) -> None:
+    unique_names = getattr(context, "employee_name_map", {})
+    unique_name = unique_names.get(emp_name, getattr(context, "last_employee_name", emp_name))
+    saved_text = context.payroll_page.get_saved_timesheets_text()
+    assert unique_name not in saved_text, (
+        f"Did not expect '{unique_name}' in saved timesheets for {period} after deletion, got:\n{saved_text[:500]}"
+    )
+    ledger_text = context.accounting_page.get_ledger_table_text()
+    assert f"Payroll Gross {period}" not in ledger_text and f"EOSB Accrual {period}" not in ledger_text, (
+        f"Expected payroll ledger entries for {period} to be purged from #historyBody, got:\n{ledger_text[:500]}"
+    )
+
+
 @when('the user filters the saved timesheets by employee "{emp_name}"')
 def step_filter_saved_timesheets_by_employee(context, emp_name: str) -> None:
     unique_names = getattr(context, "employee_name_map", {})

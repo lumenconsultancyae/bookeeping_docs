@@ -30,6 +30,9 @@ Feature: Employee Directory, UAE WPS Payroll, Gratuity (EOSB), and Fixed Assets
     Then the statutory gratuity calculator should show "> 5 Yrs (30 Days/Yr)" and statutory entitlement "66,000.00"
     When the user navigates to the "Profit & Loss" view
     Then the Income Statement should display "6500 Payroll / Salaries" and "44,000.00"
+    When the user navigates to the "Timesheet & WPS" view
+    And the user deletes the saved timesheet for period "2026-10" from the Edit Details modal
+    Then the saved timesheets section for "2026-10" should not list "Tariq Al Mansoori"
 
   Scenario: Fixed Assets directory computes monthly straight-line depreciation and net book value
     When the user navigates to the "Assets Directory" view
