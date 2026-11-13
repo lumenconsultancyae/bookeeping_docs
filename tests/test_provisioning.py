@@ -35,6 +35,13 @@ class DeploymentFilesStructureTests(unittest.TestCase):
         self.assertIn("bookkeeping-app:", local_compose)
         self.assertIn("agy-ai:", local_compose)
         self.assertIn("tunnel:", local_compose)
+        for required_mount in (
+            "/agy_service.py:/app/agy_service.py:ro",
+            "/state_repository.py:/app/state_repository.py:ro",
+            "/einvoice_service.py:/app/einvoice_service.py:ro",
+            "/migrations:/app/migrations:ro",
+        ):
+            self.assertIn(required_mount, local_compose)
 
         prod_compose = (REPO_ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
         self.assertIn("bookkeeping-app:", prod_compose)
@@ -42,6 +49,17 @@ class DeploymentFilesStructureTests(unittest.TestCase):
         self.assertIn("Dockerfile.agy", prod_compose)
         self.assertIn("CLOUDFLARE_TUNNEL_TOKEN", prod_compose)
         self.assertIn(":/root/.gemini", prod_compose)
+        for required_mount in (
+            "/agy_service.py:/app/agy_service.py:ro",
+            "/state_repository.py:/app/state_repository.py:ro",
+            "/einvoice_service.py:/app/einvoice_service.py:ro",
+            "/migrations:/app/migrations:ro",
+        ):
+            self.assertIn(required_mount, prod_compose)
+
+        nginx_conf = (REPO_ROOT / "default.conf").read_text(encoding="utf-8")
+        self.assertIn("sub_filter_types application/javascript text/javascript;", nginx_conf)
+        self.assertNotIn("sub_filter_types text/html", nginx_conf)
 
         app_root = REPO_ROOT.parent / "bookkeeping-tool"
         for moved_file in ("docker-compose.yml", "default.conf", "agy_service.py"):
