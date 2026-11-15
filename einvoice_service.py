@@ -74,7 +74,10 @@ def parse_inbound_peppol_xml(xml_string: object) -> dict[str, object]:
     sup_name = _extract_block(sup_block, "PartyName")
     sup_addr = _extract_block(sup_block, "PostalAddress")
 
-    entity_name = _extract_tag(sup_legal, "RegistrationName") or _extract_tag(sup_name, "Name") or "Peppol Supplier"
+    raw_supplier = (_extract_tag(sup_legal, "RegistrationName") or _extract_tag(sup_name, "Name")).strip()
+    if raw_supplier.lower() in {"unknown", "n/a", "na", "none", "null", "undefined", "test", "sample", "supplier name", "-"}:
+        return {"ok": False, "error": "Invalid UBL 2.1 XML: supplier name is missing or a placeholder."}
+    entity_name = raw_supplier or "Peppol Supplier"
     trn = re.sub(r"\D", "", _extract_tag(sup_tax, "CompanyID"))
     trade_license = _extract_tag(sup_legal, "CompanyID") or _extract_tag(sup_block, "EndpointID")
     address = _extract_tag(sup_addr, "StreetName")
@@ -112,6 +115,10 @@ def parse_inbound_peppol_xml(xml_string: object) -> dict[str, object]:
             "account": "6000 Office Supplies",
             "category": "OpEx",
         })
+
+    has_positive_line = any(_num(it.get("amount")) > 0 or _num(it.get("unitPrice")) > 0 for it in items)
+    if _num(total) <= 0 and _num(subtotal) <= 0 and not has_positive_line:
+        return {"ok": False, "error": "Invalid UBL 2.1 XML: invoice has no positive monetary totals or line items."}
 
     now_iso = datetime.now(timezone.utc).isoformat()
     trn_verified = len(trn) == 15

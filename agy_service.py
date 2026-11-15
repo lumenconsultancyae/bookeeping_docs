@@ -23,18 +23,21 @@ import threading
 from urllib.parse import parse_qs, urlparse
 import uuid
 
+from invoice_validation import (
+    _INVALID_DOC_TYPES,
+    _PLACEHOLDER_STRINGS,
+    build_extraction_prompt as _build_extraction_prompt,
+    clean_text_field as _clean_text_field,
+    extract_json_block as _extract_json_block,
+    parse_money as _parse_money,
+    validate_ai_document_response as _run_validate_ai_document_response,
+    validate_uploaded_file_bytes as _run_validate_uploaded_file_bytes,
+)
 from state_repository import (
-    ADMIN_EMAIL,
-    DEFAULT_ADMIN_HASH,
-    DEFAULT_ADMIN_SALT,
-    LOCAL_ONLY_KEYS,
-    LumenStateRepository,
-    compute_password_hash as _compute_password_hash,
-    is_excluded_state_key as _is_excluded_state_key,
-    resolve_default_state_db_path,
-    safe_json as _safe_json,
-    strip_account_secrets as _strip_account_secrets,
-    verify_password_hash as _verify_password_hash,
+    ADMIN_EMAIL, DEFAULT_ADMIN_HASH, DEFAULT_ADMIN_SALT, LOCAL_ONLY_KEYS, LumenStateRepository,
+    compute_password_hash as _compute_password_hash, is_excluded_state_key as _is_excluded_state_key,
+    resolve_default_state_db_path, safe_json as _safe_json,
+    strip_account_secrets as _strip_account_secrets, verify_password_hash as _verify_password_hash,
 )
 
 HOST = os.environ.get("AGY_HOST", "0.0.0.0")
@@ -170,6 +173,12 @@ class UpstreamPredictionError(PredictionServiceError):
     public_message = "AI prediction engine failed to process the request."
 
 
+class InvalidInvoiceDocumentError(PredictionServiceError):
+    status_code = 422
+    error_code = "invalid_invoice_document"
+    public_message = "The uploaded document is not a valid invoice, bill, or receipt."
+
+
 def build_error_envelope(error_code: str, message: str) -> dict:
     """Return a Flowise-compatible JSON error envelope."""
     return {"error": {"code": error_code, "message": message}, "text": "```json\n{}\n```"}
@@ -219,6 +228,14 @@ def _parse_json_prediction_request(body: bytes) -> tuple[str, list[dict]]:
     return raw_question, raw_uploads
 
 
+def _validate_uploaded_file_bytes(file_bytes: bytes, safe_name: str, mime: str) -> None:
+    _run_validate_uploaded_file_bytes(file_bytes, safe_name, mime, InvalidInvoiceDocumentError)
+
+
+def _validate_ai_document_response(question: str, response_text: str, *, has_uploads: bool) -> None:
+    _run_validate_ai_document_response(question, response_text, has_uploads=has_uploads, error_cls=InvalidInvoiceDocumentError)
+
+
 def _write_uploads_to_dir(uploads: list[dict], target_dir: Path) -> list[Path]:
     resolved_target_dir = target_dir.resolve()
     saved_paths: list[Path] = []
@@ -231,12 +248,14 @@ def _write_uploads_to_dir(uploads: list[dict], target_dir: Path) -> list[Path]:
         if not data_val:
             continue
         raw_name = item.get("name")
-        safe_name = _sanitize_filename(raw_name if isinstance(raw_name, str) else "", idx, str(item.get("mime") or "image/jpeg"))
+        mime_val = str(item.get("mime") or "image/jpeg")
+        safe_name = _sanitize_filename(raw_name if isinstance(raw_name, str) else "", idx, mime_val)
         b64_payload = data_val.split(",", 1)[1] if ("," in data_val and data_val.startswith("data:")) else data_val
         try:
             file_bytes = base64.b64decode(b64_payload, validate=True)
         except (binascii.Error, ValueError) as exc:
             raise InvalidPredictionRequestError(f"Invalid base64 encoding in upload at index {idx}.", internal_detail=str(exc)) from exc
+        _validate_uploaded_file_bytes(file_bytes, safe_name, mime_val)
         file_path = (resolved_target_dir / safe_name).resolve()
         if not file_path.is_relative_to(resolved_target_dir) or file_path == resolved_target_dir:
             raise InvalidPredictionRequestError("Invalid upload filename.")
@@ -251,28 +270,7 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
     req_dir.mkdir(parents=True, exist_ok=True)
     try:
         saved_files = _write_uploads_to_dir(uploads, req_dir)
-        if saved_files:
-            files_list = "\n".join(f"- {p}" for p in saved_files)
-            full_prompt = (
-                "You are an accounting document extraction engine.\n"
-                f"First, call the `read_file` tool ONCE on each uploaded document file below:\n{files_list}\n\n"
-                "CRITICAL RULES:\n"
-                "- Use ONLY the `read_file` tool. Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
-                "- Extract all values directly from the document content returned by `read_file`.\n"
-                "- Ensure every line item `amount` and `unitPrice` is the pre-tax net amount (excluding VAT/tax), and `subtotal` is the sum of pre-tax line item amounts so that `subtotal - discount + tax = total`.\n"
-                f"- Respond ONLY with the requested ```json ... ``` code block (no extra prose):\n\n{question}"
-            )
-        elif "json" in question.lower() or "extract" in question.lower() or "bank statement" in question.lower():
-            full_prompt = (
-                "You are an accounting document extraction engine.\n"
-                "CRITICAL RULES:\n- Do NOT call `read_file`, `list_dir`, `find_by_name`, `run_command`, `write_file`, `edit_file`, or any other tool.\n"
-                f"- Fulfill the extraction instructions below and respond ONLY with the requested ```json ... ``` code block (no extra prose):\n\n{question}"
-            )
-        else:
-            full_prompt = (
-                "CRITICAL RULES:\n- Do NOT call `run_command`, `write_file`, `edit_file`, or any other tool.\n"
-                f"- Respond directly and helpfully to the user prompt below:\n\n{question}"
-            )
+        full_prompt = _build_extraction_prompt(question, saved_files)
         cmd = [
             "agy", "--mode", "accept-edits", "--dangerously-skip-permissions",
             "--disable-slash-commands", "--output-format", "json", "--model", AGY_MODEL,
@@ -298,13 +296,13 @@ def run_agy_prediction(question: str, uploads: list[dict]) -> dict:
                     continue
         if parsed_json is not None:
             conv_id, status = str(parsed_json.get("conversation_id") or ""), str(parsed_json.get("status") or "SUCCESS")
+            response_text = str(parsed_json.get("response") or "")
+            _validate_ai_document_response(question, response_text, has_uploads=bool(saved_files))
             print(f"[agy] Completed conversation_id={conv_id} status={status}", flush=True)
-            return {"text": str(parsed_json.get("response") or ""), "conversation_id": conv_id, "status": status}
+            return {"text": response_text, "conversation_id": conv_id, "status": status}
         if proc.returncode != 0:
-            raise UpstreamPredictionError(
-                "AI prediction engine failed to process the request.",
-                internal_detail=f"agy exited with code {proc.returncode}: {stderr or stdout}",
-            )
+            raise UpstreamPredictionError("AI prediction engine failed to process the request.", internal_detail=f"agy exited with code {proc.returncode}: {stderr or stdout}")
+        _validate_ai_document_response(question, stdout, has_uploads=bool(saved_files))
         return {"text": stdout, "status": "SUCCESS"}
     finally:
         shutil.rmtree(req_dir, ignore_errors=True)

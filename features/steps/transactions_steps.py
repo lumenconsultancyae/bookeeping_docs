@@ -328,6 +328,22 @@ def step_verify_supplier_bill_in_ledger(context, expected_supplier: str) -> None
     )
 
 
+@when('the user uploads and attempts to analyze a non-invoice PDF "{filename}"')
+def step_upload_and_reject_non_invoice_pdf(context, filename: str) -> None:
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    bad_pdf = ARTIFACTS_DIR / filename
+    bad_pdf.write_bytes(b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n")
+    context.transactions_page.upload_and_reject_supplier_document(bad_pdf)
+
+
+@then("the Supplier Bill extraction review card should remain hidden and the upload dropzone should be reset")
+def step_verify_supplier_bill_rejection(context) -> None:
+    state = context.transactions_page.get_supplier_upload_rejection_state()
+    assert not state["result_visible"], "Expected #resultCard to remain hidden after non-invoice rejection"
+    assert state["upload_box_visible"], "Expected #uploadBox to be visible/reset after non-invoice rejection"
+    assert state["preview_empty"], "Expected #supplierVisualPreview to be empty after non-invoice rejection"
+
+
 @when(
     'the user creates a quote for client "{client_name}" with SKU "{sku}" quantity "{qty}" at price "{price}" AED'
 )

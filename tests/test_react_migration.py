@@ -442,7 +442,7 @@ class ReactAppShellAndDashboardMountTests(unittest.TestCase):
         for ts_mod in (
             "src/react-runtime.ts", "vat201.ts", "wps-gratuity.ts", "corp-tax-tracker.ts", "faf-export.ts", "fx-correction.ts", "react-store.ts",
             "welcome-plans.ts", "plan-access.ts", "auth.ts", "profiles-storage.ts", "attachments-store.ts",
-            "ar-posting-fix.ts", "einvoice-ae.ts", "i18n.ts", "functions/api/[[path]].ts",
+            "ar-posting-fix.ts", "einvoice-ae.ts", "i18n.ts", "invoice-validation.ts", "functions/api/[[path]].ts",
         ):
             src_txt = (APP_DIR / ts_mod).read_text(encoding="utf-8")
             self.assertNotIn("inner" + "HTML", src_txt, f"Unexpected raw HTML sink in {ts_mod}")

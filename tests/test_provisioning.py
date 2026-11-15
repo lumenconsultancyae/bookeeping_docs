@@ -37,6 +37,7 @@ class DeploymentFilesStructureTests(unittest.TestCase):
         self.assertIn("tunnel:", local_compose)
         for required_mount in (
             "/agy_service.py:/app/agy_service.py:ro",
+            "/invoice_validation.py:/app/invoice_validation.py:ro",
             "/state_repository.py:/app/state_repository.py:ro",
             "/einvoice_service.py:/app/einvoice_service.py:ro",
             "/migrations:/app/migrations:ro",
@@ -51,6 +52,7 @@ class DeploymentFilesStructureTests(unittest.TestCase):
         self.assertIn(":/root/.gemini", prod_compose)
         for required_mount in (
             "/agy_service.py:/app/agy_service.py:ro",
+            "/invoice_validation.py:/app/invoice_validation.py:ro",
             "/state_repository.py:/app/state_repository.py:ro",
             "/einvoice_service.py:/app/einvoice_service.py:ro",
             "/migrations:/app/migrations:ro",

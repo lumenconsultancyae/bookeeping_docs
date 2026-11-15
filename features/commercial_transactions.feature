@@ -52,6 +52,12 @@ Feature: Commercial Transactions, AI Document Extraction, Quotes, Purchase Order
     And the user navigates to the "General Ledger" view
     Then the General Ledger should contain the supplier bill for "Meydan"
 
+  @ai @invoice_validation
+  Scenario: Uploading a non-invoice PDF containing only dog photos is rejected and resets the upload form
+    When the user navigates to the "Supplier Bills" view
+    And the user uploads and attempts to analyze a non-invoice PDF "dogs_only.pdf"
+    Then the Supplier Bill extraction review card should remain hidden and the upload dropzone should be reset
+
   Scenario: Creating a pre-sales Quote and converting it to a Sales Invoice
     Given an inventory item "Managed Firewall Appliance" with SKU "FW-900" priced at "1500.00" AED exists
     When the user navigates to the "Quotes & Estimates" view

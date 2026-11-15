@@ -14,9 +14,12 @@ bookeeping_docs/
 ├── Dockerfile.agy                                   # Production Dockerfile building agy-ai on AWS EC2
 ├── default.conf                                     # Nginx reverse-proxy configuration (/api/ & /__vendor__/)
 ├── agy_service.py                                   # HTTP prediction & persistence service wrapping the agy CLI
+├── invoice_validation.py                            # Backend upload magic-byte & AI response validation (HTTP 422 on non-invoices)
+├── einvoice_service.py                              # UAE Peppol PINT-AE UBL 2.1 XML generation, inbound parsing & AS4 transmission
 ├── state_repository.py                              # Multi-tenant SQLite state/attachment repository & PBKDF2-SHA256 auth
 ├── migrations/
-│   └── 0001_initial_schema.sql                      # SQLite & Cloudflare D1 DDL for app_state and attachments tables
+│   ├── 0001_initial_schema.sql                      # SQLite & Cloudflare D1 DDL for app_state and attachments tables
+│   └── 0002_normalized_accounting_schema.sql        # Normalized multi-tenant relational accounting & Peppol transmissions DDL
 ├── provision.py                                     # AWS EC2 + Cloudflare Tunnel/D1/R2 provisioning CLI entrypoint
 ├── provision.sh                                     # Shell wrapper reading AWS & Cloudflare env vars
 ├── deploy/                                          # Layered AWS EC2 (SigV4) & Cloudflare API v4 provisioning modules
@@ -39,6 +42,8 @@ bookeeping_docs/
 │   ├── test_ui_feedback_and_forms.py                # In-app toasts/confirmations & inline form validation tests
 │   ├── test_ui_tables_and_layout.py                 # Table pagination, search, row highlight & responsive drawer tests
 │   ├── test_react_migration.py                      # Official React 18.3.1 + TypeScript/Vite SPA runtime, domain unit tests, tsc & XSS tests
+│   ├── test_invoice_validation.py                   # Backend & frontend valid-invoice-only upload, PDF text, AI JSON & Peppol XML tests
+│   ├── test_einvoice_peppol.py                      # UAE Peppol PINT-AE UBL 2.1 XML generation, inbound parsing & AS4 Access Point tests
 │   └── test_whatsapp_workflows.py                   # WhatsApp EN/AR invoice share, +971 phone, TRN OCR & executive print tests
 ├── behave.ini                                       # Behave BDD runner configuration
 ├── requirements.txt                                 # Python BDD & Playwright browser dependencies

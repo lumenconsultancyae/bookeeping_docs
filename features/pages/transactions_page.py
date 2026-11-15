@@ -128,7 +128,7 @@ class TransactionsPage(BasePage):
 
             const list = document.getElementById('crnLineItemsList');
             if (list) {
-                list.innerHTML = '';
+                list.replaceChildren();
                 window.addCrnLineItem({
                     description: arguments[4],
                     qty: arguments[5],
@@ -277,6 +277,24 @@ class TransactionsPage(BasePage):
         self.post_latest_ledger_entry()
         return alert_text
 
+    def upload_and_reject_supplier_document(self, sample_file_path: Path) -> None:
+        """Upload a non-invoice file to `#fileInput`, click `#processBtn`, and wait for reset."""
+        self.evaluate_script("window.extractPdfTextClientSide = async () => '';")
+        self.wait_until(lambda p: (p.locator("#fileInput").set_input_files(str(sample_file_path)) or True))
+        self.wait_until(lambda p: p.locator("#processBtn").is_visible())
+        self.click_id("processBtn")
+        self.wait_until(lambda p: p.locator("#uploadBox").is_visible(), timeout=15.0)
+
+    def get_supplier_upload_rejection_state(self) -> dict[str, object]:
+        """Return visibility/DOM state of the Supplier Bill upload UI after rejection."""
+        return self.evaluate_script(
+            """return {
+                result_visible: document.getElementById('resultCard').style.display !== 'none',
+                upload_box_visible: document.getElementById('uploadBox').style.display !== 'none',
+                preview_empty: document.getElementById('supplierVisualPreview').childNodes.length === 0,
+            };"""
+        )
+
     # --- Quotes & Estimates (`#view-quotes`) ---
 
     def create_quote(
@@ -296,7 +314,7 @@ class TransactionsPage(BasePage):
             """
             const container = document.getElementById('quoteLineItems');
             if (container && typeof window.renderQuoteLineItem === 'function') {
-                container.innerHTML = '';
+                container.replaceChildren();
                 window.renderQuoteLineItem();
             }
             const row = document.querySelector('#quoteLineItems .form-group.inline');
@@ -366,7 +384,7 @@ class TransactionsPage(BasePage):
             """
             const container = document.getElementById('poLineItems');
             if (container && typeof window.renderPOLineItem === 'function') {
-                container.innerHTML = '';
+                container.replaceChildren();
                 window.renderPOLineItem();
             }
             const row = document.querySelector('#poLineItems .form-group.inline');

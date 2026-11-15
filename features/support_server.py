@@ -499,6 +499,13 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=200)
             return
         if parsed.path.startswith("/api/"):
+            if "dogs_only" in body_text or "non_invoice_dog" in body_text:
+                err_obj = {
+                    "error": {"code": "invalid_invoice_document", "message": "The uploaded PDF only contains photos of dogs and is not a valid invoice."},
+                    "text": json.dumps({"isValidInvoice": False, "documentType": "non_invoice", "rejectionReason": "The uploaded PDF only contains photos of dogs."}),
+                }
+                self._send_bytes(json.dumps(err_obj).encode("utf-8"), "application/json; charset=utf-8", status=422)
+                return
             response_obj = build_mock_ai_response(body_text)
             self._send_bytes(
                 json.dumps(response_obj).encode("utf-8"),
