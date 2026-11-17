@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from deploy.domain import ProvisioningError, ProvisioningErrorCode
+
+WRANGLER_OAUTH_CLIENT_ID = "54d11594-84e4-41aa-b438-e81b8fa78ee7"
+WRANGLER_OAUTH_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token"
 
 REQUIRED_ENV_VARS = (
     "AWS_ACCESS_KEY_ID",
@@ -52,8 +60,49 @@ def resolve_aws_login_cache_credentials(home_dir: Path | None = None) -> dict[st
     return None
 
 
-def resolve_wrangler_oauth_token(home_dir: Path | None = None) -> str | None:
-    """Read the short-lived Cloudflare OAuth token saved by `wrangler login` browser sign-in."""
+def _refresh_cloudflare_oauth_token(refresh_token: str) -> dict[str, object]:
+    """Exchange a Wrangler OAuth `refresh_token` for a fresh `access_token`."""
+    body = urllib.parse.urlencode(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": WRANGLER_OAUTH_CLIENT_ID,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        WRANGLER_OAUTH_TOKEN_URL,
+        data=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "User-Agent": "wrangler/3.114.17",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        raw = resp.read().decode("utf-8")
+        data = json.loads(raw) if raw else {}
+        return data if isinstance(data, dict) else {}
+
+
+def _is_wrangler_token_expired(expiration_raw: str) -> bool:
+    if not expiration_raw:
+        return False
+    try:
+        normalized = expiration_raw.replace("Z", "+00:00")
+        exp_dt = datetime.fromisoformat(normalized)
+        if exp_dt.tzinfo is None:
+            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+        return exp_dt <= (datetime.now(timezone.utc) + timedelta(seconds=60))
+    except ValueError:
+        return False
+
+
+def resolve_wrangler_oauth_token(
+    home_dir: Path | None = None,
+    *,
+    token_refresher: Callable[[str], dict[str, object]] | None = None,
+) -> str | None:
+    """Read (and automatically refresh if expired) the Cloudflare OAuth token saved by `wrangler login`."""
     base_home = home_dir or Path.home()
     repo_cf_home = Path(__file__).resolve().parent.parent / ".agy_state" / "cf_home"
     candidates = (
@@ -62,6 +111,7 @@ def resolve_wrangler_oauth_token(home_dir: Path | None = None) -> str | None:
         base_home / "Library" / "Preferences" / ".wrangler" / "config" / "default.toml",
         repo_cf_home / ".config" / ".wrangler" / "config" / "default.toml",
     )
+    refresher = token_refresher or _refresh_cloudflare_oauth_token
 
     for cfg in candidates:
         if not cfg.is_file():
@@ -70,9 +120,49 @@ def resolve_wrangler_oauth_token(home_dir: Path | None = None) -> str | None:
             content = cfg.read_text(encoding="utf-8")
         except OSError:
             continue
-        match = re.search(r'^\s*oauth_token\s*=\s*"([^"]+)"', content, flags=re.MULTILINE)
-        if match and match.group(1).strip():
-            return match.group(1).strip()
+        tok_match = re.search(r'^\s*oauth_token\s*=\s*"([^"]+)"', content, flags=re.MULTILINE)
+        exp_match = re.search(r'^\s*expiration_time\s*=\s*"([^"]+)"', content, flags=re.MULTILINE)
+        ref_match = re.search(r'^\s*refresh_token\s*=\s*"([^"]+)"', content, flags=re.MULTILINE)
+        oauth_token = tok_match.group(1).strip() if tok_match else ""
+        expiration_raw = exp_match.group(1).strip() if exp_match else ""
+        refresh_token = ref_match.group(1).strip() if ref_match else ""
+
+        if refresh_token and (not oauth_token or _is_wrangler_token_expired(expiration_raw)):
+            try:
+                refreshed = refresher(refresh_token)
+                new_access = str(refreshed.get("access_token") or "").strip()
+                new_refresh = str(refreshed.get("refresh_token") or refresh_token).strip()
+                expires_in = int(refreshed.get("expires_in") or 3600)
+                if new_access:
+                    new_exp = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat()
+                    updated = re.sub(
+                        r'(^\s*oauth_token\s*=\s*)"[^"]*"',
+                        f'\\1"{new_access}"',
+                        content,
+                        flags=re.MULTILINE,
+                    )
+                    updated = re.sub(
+                        r'(^\s*refresh_token\s*=\s*)"[^"]*"',
+                        f'\\1"{new_refresh}"',
+                        updated,
+                        flags=re.MULTILINE,
+                    )
+                    updated = re.sub(
+                        r'(^\s*expiration_time\s*=\s*)"[^"]*"',
+                        f'\\1"{new_exp}"',
+                        updated,
+                        flags=re.MULTILINE,
+                    )
+                    try:
+                        cfg.write_text(updated, encoding="utf-8")
+                    except OSError:
+                        pass
+                    return new_access
+            except Exception:
+                pass
+
+        if oauth_token:
+            return oauth_token
     return None
 
 

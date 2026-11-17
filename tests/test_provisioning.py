@@ -131,6 +131,34 @@ class ProvisioningConfigTests(unittest.TestCase):
             )
             self.assertEqual(resolve_wrangler_oauth_token(home_path), "cf_oauth_browser_token_xyz")
 
+    def test_resolve_wrangler_oauth_token_refreshes_expired_token_when_refresh_token_present(self) -> None:
+        from deploy.config import resolve_wrangler_oauth_token
+
+        with tempfile.TemporaryDirectory() as tmp_home:
+            home_path = Path(tmp_home)
+            cfg_file = home_path / ".config" / ".wrangler" / "config" / "default.toml"
+            cfg_file.parent.mkdir(parents=True, exist_ok=True)
+            cfg_file.write_text(
+                'oauth_token = "expired_oauth_token"\n'
+                'expiration_time = "2020-01-01T00:00:00+00:00"\n'
+                'refresh_token = "valid_refresh_token_123"\n',
+                encoding="utf-8",
+            )
+
+            def fake_refresh(refresh_token: str) -> dict[str, object]:
+                self.assertEqual(refresh_token, "valid_refresh_token_123")
+                return {
+                    "access_token": "fresh_oauth_token_456",
+                    "refresh_token": "fresh_refresh_token_789",
+                    "expires_in": 3600,
+                }
+
+            resolved = resolve_wrangler_oauth_token(home_path, token_refresher=fake_refresh)
+            self.assertEqual(resolved, "fresh_oauth_token_456")
+            updated_toml = cfg_file.read_text(encoding="utf-8")
+            self.assertIn('oauth_token = "fresh_oauth_token_456"', updated_toml)
+            self.assertIn('refresh_token = "fresh_refresh_token_789"', updated_toml)
+
 
 class UserDataAndSigV4UnitTests(unittest.TestCase):
     """Tests for EC2 cloud-init UserData generation and AWS Signature V4 signing."""
