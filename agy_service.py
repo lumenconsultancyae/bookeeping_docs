@@ -102,6 +102,7 @@ CHART_JS_SHIM = """(function(window) {
 
 PDF_JS_SHIM = """(function(window) {
     const pdfjsLib = {
+        version: '3.11.174',
         GlobalWorkerOptions: { workerSrc: '' },
         getDocument: function() {
             return { promise: Promise.resolve({ numPages: 1, getPage: function(pageNum) {

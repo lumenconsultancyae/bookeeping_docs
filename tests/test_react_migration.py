@@ -32,6 +32,22 @@ class ReactSpaEntrypointAndBundleTests(unittest.TestCase):
             self.assertIn(required_script, index_html)
             self.assertTrue((APP_DIR / required_script).is_file(), f"Missing {required_script}")
 
+    def test_pdfjs_api_and_worker_versions_match_across_index_and_router(self) -> None:
+        index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        router_tsx = (APP_DIR / "app-core-and-router.tsx").read_text(encoding="utf-8")
+        router_js = (APP_DIR / "app-core-and-router.js").read_text(encoding="utf-8")
+        api_match = re.search(r"pdf\.js/([^/\"']+)/pdf\.min\.js", index_html)
+        worker_tsx_match = re.search(r"pdf\.js/([^/\"'$]+)/pdf\.worker\.min\.js", router_tsx)
+        worker_js_match = re.search(r"pdf\.js/([^/\"'$]+)/pdf\.worker\.min\.js", router_js)
+        self.assertIsNotNone(api_match, "Expected pdf.min.js script in index.html")
+        self.assertIsNotNone(worker_tsx_match, "Expected pdf.worker.min.js workerSrc in app-core-and-router.tsx")
+        self.assertIsNotNone(worker_js_match, "Expected pdf.worker.min.js workerSrc in app-core-and-router.js")
+        self.assertEqual(api_match.group(1), "3.11.174")
+        self.assertEqual(api_match.group(1), worker_tsx_match.group(1))
+        self.assertEqual(api_match.group(1), worker_js_match.group(1))
+        self.assertNotIn("3.4.120", index_html)
+        self.assertIn("activePdfjsLib.version", router_js)
+
     def test_react_app_manifest_preserves_deterministic_module_load_order(self) -> None:
         react_app_src = (APP_DIR / "react-app.js").read_text(encoding="utf-8")
         self.assertIn("LUMEN_MODULE_MANIFEST", react_app_src)

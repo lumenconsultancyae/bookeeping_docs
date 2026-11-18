@@ -92,6 +92,7 @@ CHART_JS_SHIM = """
 PDF_JS_SHIM = """
 (function(window) {
     const pdfjsLib = {
+        version: '3.11.174',
         GlobalWorkerOptions: { workerSrc: '' },
         getDocument: function(params) {
             return {
