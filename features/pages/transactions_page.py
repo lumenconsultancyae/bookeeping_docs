@@ -250,7 +250,7 @@ class TransactionsPage(BasePage):
         self.wait_until(lambda p: p.locator("#processBtn").is_visible())
         self.click_id("processBtn")
         self.wait_until(
-            lambda p: p.locator("#resultCard").is_visible(),
+            lambda p: p.locator("#resultCard").is_visible() and bool(p.locator("#resEntity").input_value().strip()),
             timeout=90.0,
         )
 

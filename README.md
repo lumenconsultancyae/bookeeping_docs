@@ -9,7 +9,7 @@ This repository contains the local and production deployment configurations, AWS
 ```text
 bookeeping_docs/
 ├── README.md                                        # Repository overview, deployment & test guide
-├── docker-compose.yml                               # Local Docker Compose stack (bookkeeping-web + agy-ai + tunnels)
+├── docker-compose.yml                               # Local Docker Compose stack (local-only bookkeeping-web + agy-ai)
 ├── docker-compose.prod.yml                          # Production Docker Compose stack for AWS EC2 + Cloudflare Tunnel
 ├── Dockerfile.agy                                   # Production Dockerfile building agy-ai on AWS EC2
 ├── default.conf                                     # Nginx reverse-proxy configuration (/api/ & /__vendor__/)
@@ -43,6 +43,10 @@ bookeeping_docs/
 │   ├── test_ui_tables_and_layout.py                 # Table pagination, search, row highlight & responsive drawer tests
 │   ├── test_react_migration.py                      # Official React 18.3.1 + TypeScript/Vite SPA runtime, domain unit tests, tsc & XSS tests
 │   ├── test_invoice_validation.py                   # Backend & frontend valid-invoice-only upload, PDF text, AI JSON & Peppol XML tests
+│   ├── test_banking_and_menu_new_tab.py             # Monthly bank statement dashboard/editing, commercial invoice, new-tab nav & timesheet collapse tests
+│   ├── test_fx_and_plan_ai_gating.py                # USD->AED 3.675 FX auto-conversion, Basic plan AI gating, Lumy AI & backend 403 enforcement tests
+│   ├── test_dashboard_ledger_supplier_manual.py     # Dashboard multi-year cash flow graph, ledger entry viewer & manual supplier bill tests
+│   ├── test_ledger_document_preview.py              # General Ledger document preview modal & safe PDF iframe tests
 │   ├── test_einvoice_peppol.py                      # UAE Peppol PINT-AE UBL 2.1 XML generation, inbound parsing & AS4 Access Point tests
 │   └── test_whatsapp_workflows.py                   # WhatsApp EN/AR invoice share, +971 phone, TRN OCR & executive print tests
 ├── behave.ini                                       # Behave BDD runner configuration

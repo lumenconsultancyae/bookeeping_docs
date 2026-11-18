@@ -453,7 +453,7 @@ class ControllerDomRejectionTests(unittest.TestCase):
                 )
 
                 # 1. Supplier Bills view
-                page.locator('a.nav-item[data-target="view-supplier"]').click()
+                page.evaluate('() => window.switchView("view-supplier")')
                 time.sleep(0.1)
                 page.locator("#fileInput").set_input_files(str(dogs_pdf_path))
                 time.sleep(0.1)
@@ -461,7 +461,7 @@ class ControllerDomRejectionTests(unittest.TestCase):
                 time.sleep(0.25)
 
                 # 2. Customer Invoices view (auto-analyzes on file change)
-                page.locator('a.nav-item[data-target="view-customer"]').click()
+                page.evaluate('() => window.switchView("view-customer")')
                 time.sleep(0.1)
                 page.locator("#custEntity").evaluate("(el) => { el.value = ''; }")
                 page.locator("#custInvoiceNum").evaluate("(el) => { el.value = ''; }")
@@ -469,13 +469,13 @@ class ControllerDomRejectionTests(unittest.TestCase):
                 time.sleep(0.25)
 
                 # 3. Expense Bills view (auto-analyzes on file change)
-                page.locator('a.nav-item[data-target="view-expense"]').click()
+                page.evaluate('() => window.switchView("view-expense")')
                 time.sleep(0.1)
                 page.locator("#expFileInput").set_input_files(str(dogs_pdf_path))
                 time.sleep(0.25)
 
                 # 4. Petty Cash / Journal view
-                page.locator('a.nav-item[data-target="view-journal"]').click()
+                page.evaluate('() => window.switchView("view-journal")')
                 time.sleep(0.1)
                 page.locator("#journalFileInput").set_input_files(str(dogs_pdf_path))
                 time.sleep(0.1)
@@ -483,7 +483,7 @@ class ControllerDomRejectionTests(unittest.TestCase):
                 time.sleep(0.25)
 
                 # 5. Bank Reconciliation view
-                page.locator('a.nav-item[data-target="view-bank"]').click()
+                page.evaluate('() => window.switchView("view-bank")')
                 time.sleep(0.1)
                 page.locator("#bankFile").set_input_files(str(dogs_pdf_path))
                 time.sleep(0.1)
@@ -507,7 +507,8 @@ class ControllerDomRejectionTests(unittest.TestCase):
                         journalReviewVisible: document.getElementById('pettyCashReviewSection').style.display !== 'none',
                         journalPreviewHtml: document.getElementById('pettyCashVisualPreview').innerHTML,
                         journalUploadVisible: document.getElementById('journalUploadBox').style.display !== 'none',
-                        bankResultVisible: document.getElementById('bankResultCard').style.display !== 'none',
+                        bankPreviewVisible: document.getElementById('bankFilePreview').style.display !== 'none',
+                        bankNameValue: document.getElementById('resBankName').value,
                         bankUploadVisible: document.getElementById('bankUploadBox').style.display !== 'none',
                     })"""
                 )
@@ -526,7 +527,8 @@ class ControllerDomRejectionTests(unittest.TestCase):
             self.assertFalse(res["journalReviewVisible"])
             self.assertEqual(res["journalPreviewHtml"], "")
             self.assertTrue(res["journalUploadVisible"])
-            self.assertFalse(res["bankResultVisible"])
+            self.assertFalse(res["bankPreviewVisible"])
+            self.assertEqual(res["bankNameValue"], "")
             self.assertTrue(res["bankUploadVisible"])
             self.assertTrue(any(t["type"] == "error" for t in res["toasts"]))
         finally:

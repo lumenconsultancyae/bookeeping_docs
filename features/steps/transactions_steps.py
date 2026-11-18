@@ -512,3 +512,39 @@ def step_verify_recurring_template(context, template_name: str) -> None:
     assert unique_template in table_text, (
         f"Expected recurring template '{unique_template}' in table, got:\n{table_text}"
     )
+
+
+@then("the Dashboard should display the floating Lumy AI Books Assistant")
+def step_verify_floating_lumy_ai(context) -> None:
+    visible = context.base_page.evaluate_script(
+        "return Boolean(document.getElementById('lumyFloatingRoot') && (document.getElementById('lumenAiAssistantCard') || document.getElementById('lumyAiLauncher')));"
+    )
+    assert visible, "Expected floating Lumy AI Books Assistant (#lumyFloatingRoot) on the Dashboard"
+
+
+@when('the user configures a zero-VAT commercial invoice for "{client_name}" with service "{service_desc}" at rate "{rate}" AED')
+def step_configure_zero_vat_commercial_invoice(context, client_name: str, service_desc: str, rate: str) -> None:
+    context.base_page.evaluate_script(
+        """
+        document.getElementById('custEntity').value = arguments[0];
+        const desc = document.querySelector('#custLineItemsList .item-desc');
+        const rateEl = document.querySelector('#custLineItemsList .item-rate');
+        const vatEl = document.querySelector('#custLineItemsList .item-vat-rate');
+        if (desc) desc.value = arguments[1];
+        if (rateEl) rateEl.value = arguments[2];
+        if (vatEl) { vatEl.value = '0'; vatEl.dataset.userModified = '1'; }
+        if (typeof window.calcCustTotals === 'function') window.calcCustTotals();
+        """,
+        client_name,
+        service_desc,
+        rate,
+    )
+
+
+@then('the sales invoice badge should display "{expected_badge}" and previewing the invoice should show "{expected_heading}"')
+def step_verify_commercial_invoice_badge_and_preview(context, expected_badge: str, expected_heading: str) -> None:
+    badge = context.base_page.get_text_by_id("custDocTypeBadge").strip()
+    assert badge == expected_badge, f"Expected badge '{expected_badge}', got '{badge}'"
+    preview_text = context.transactions_page.preview_customer_einvoice()
+    assert expected_heading in preview_text, f"Expected '{expected_heading}' in preview, got:\n{preview_text[:300]}"
+    context.base_page.dismiss_modals_if_present()

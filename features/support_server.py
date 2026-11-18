@@ -309,6 +309,21 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:  # noqa: A002
         return  # Silence per-request stdout noise during BDD test runs
 
+    custom_api_handler = None
+
+    def _try_custom_api_handler(self, body_text: str = "") -> bool:
+        handler = type(self).custom_api_handler
+        if handler is None or not self.path.startswith("/api/v1/"):
+            return False
+        port = self.server.server_address[1]
+        req = type("Req", (), {"url": f"http://127.0.0.1:{port}{self.path}", "method": self.command, "post_data": body_text, "headers": dict(self.headers)})()
+        res: dict[str, object] = {"status": 200, "content_type": "application/json; charset=utf-8", "body": "{}"}
+        route = type("Route", (), {"request": req, "fulfill": lambda _s, status=200, content_type="application/json", body="{}": res.update({"status": status, "content_type": content_type, "body": body})})()
+        handler(route)
+        raw = res["body"].encode("utf-8") if isinstance(res["body"], str) else bytes(res["body"])
+        self._send_bytes(raw, str(res["content_type"]), status=int(res["status"]))
+        return True
+
     def _send_bytes(self, content: bytes, content_type: str, status: int = 200) -> None:
         try:
             self.send_response(status)
@@ -323,46 +338,27 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         req_path = parsed.path
-
+        if self._try_custom_api_handler():
+            return
         if req_path == "/__vendor__/chart.js":
-            self._send_bytes(CHART_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
-            return
+            return self._send_bytes(CHART_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
         if req_path in ("/__vendor__/pdf.min.js", "/__vendor__/pdf.worker.min.js"):
-            self._send_bytes(PDF_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
-            return
+            return self._send_bytes(PDF_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
         if req_path == "/__vendor__/fonts.css":
-            self._send_bytes(b"/* local font shim */\n", "text/css; charset=utf-8")
-            return
+            return self._send_bytes(b"/* local font shim */\n", "text/css; charset=utf-8")
         if req_path == "/api/v1/auth/session":
             repo = agy_service.get_state_repo()
-            payload = repo.resolve_session(
-                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
-                account_header=self.headers.get("X-Lumen-Account"),
-                session_header=self.headers.get("X-Lumen-Session"),
-            )
-            self._send_bytes(json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8", status=200)
-            return
+            payload = repo.resolve_session(cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"), account_header=self.headers.get("X-Lumen-Account"), session_header=self.headers.get("X-Lumen-Session"))
+            return self._send_bytes(json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8", status=200)
         if req_path == "/api/v1/state":
             repo = agy_service.get_state_repo()
-            caller_acc = repo.resolve_caller_from_headers(
-                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
-                account_header=self.headers.get("X-Lumen-Account"),
-                session_header=self.headers.get("X-Lumen-Session"),
-            )
-            payload = {"status": "ok", "state": repo.get_scoped_state(caller_acc)}
-            self._send_bytes(json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8", status=200)
-            return
+            caller_acc = repo.resolve_caller_from_headers(cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"), account_header=self.headers.get("X-Lumen-Account"), session_header=self.headers.get("X-Lumen-Session"))
+            return self._send_bytes(json.dumps({"status": "ok", "state": repo.get_scoped_state(caller_acc)}).encode("utf-8"), "application/json; charset=utf-8", status=200)
         if req_path == "/api/v1/attachments":
             repo = agy_service.get_state_repo()
-            caller_acc = repo.resolve_caller_from_headers(
-                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
-                account_header=self.headers.get("X-Lumen-Account"),
-                session_header=self.headers.get("X-Lumen-Session"),
-            )
+            caller_acc = repo.resolve_caller_from_headers(cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"), account_header=self.headers.get("X-Lumen-Account"), session_header=self.headers.get("X-Lumen-Session"))
             key = (parse_qs(parsed.query).get("key") or [""])[0]
-            payload = {"status": "ok", "key": key, "data": repo.get_attachment(key, account_id=caller_acc)}
-            self._send_bytes(json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8", status=200)
-            return
+            return self._send_bytes(json.dumps({"status": "ok", "key": key, "data": repo.get_attachment(key, account_id=caller_acc)}).encode("utf-8"), "application/json; charset=utf-8", status=200)
 
         if req_path in ("/", "/index.html"):
             index_file = APP_SOURCE_DIR / "index.html"
@@ -434,6 +430,8 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
         content_len = int(self.headers.get("Content-Length", "0"))
         body_bytes = self.rfile.read(content_len) if content_len > 0 else b""
         body_text = body_bytes.decode("utf-8", errors="ignore")
+        if self._try_custom_api_handler(body_text):
+            return
 
         if parsed.path == "/api/v1/auth/login":
             repo = agy_service.get_state_repo()

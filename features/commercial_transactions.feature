@@ -105,3 +105,10 @@ Feature: Commercial Transactions, AI Document Extraction, Quotes, Purchase Order
     Then the Expense OCR form should auto-populate Vendor TRN "100234567890003", payee "ADNOC Distribution", net "200.00", and VAT "10.00"
     When the user saves the OCR-extracted expense
     Then the Expense History table should display Vendor TRN "100234567890003" and total "210.00"
+
+  @commercial_invoice @lumy_ai
+  Scenario: Issuing a Zero-VAT Commercial Invoice and verifying the floating Lumy AI Books Assistant on the Dashboard
+    Then the Dashboard should display the floating Lumy AI Books Assistant
+    When the user navigates to the "Sales Invoices" view
+    And the user configures a zero-VAT commercial invoice for "Gulf Free Zone Buyer FZE" with service "Export Advisory" at rate "2500.00" AED
+    Then the sales invoice badge should display "Commercial Invoice" and previewing the invoice should show "COMMERCIAL INVOICE"

@@ -226,7 +226,7 @@ class BasePage:
         target_id = self.VIEW_TARGET_MAP.get(view_label, view_label)
 
         def _click_and_verify(p: Page) -> bool:
-            p.locator(f'.nav-item[data-target="{target_id}"]').first.evaluate("el => el.click()")
+            p.evaluate(f"() => window.switchView({target_id!r})")
             return p.locator(f"#{target_id}").is_visible()
 
         self.wait_until(_click_and_verify)
