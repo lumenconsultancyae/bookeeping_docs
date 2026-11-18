@@ -340,7 +340,9 @@ return (async () => {
     assert.strictEqual(Profiles.formatDateDdMmYy('10/11/2026'), '10/11/26'); assert.strictEqual(Profiles.formatDateTimeDdMmYy(new Date(2026, 10, 10, 14, 5)), '10/11/26, 14:05');
     const extraProf = Profiles.create('Secondary Co'); Profiles.seedData(extraProf.id, 'bookkeeping_history_v2', [{ id: 'sec-1' }]); Profiles.remove(extraProf.id);
     assert.strictEqual(Profiles.list().some((p) => p.id === extraProf.id), false);
-    assert.strictEqual(Profiles.deleteAccountAdmin(trialReg.accountId), true); assert.strictEqual(Profiles.findAccountByEmail('trial@co.ae'), null);
+    assert.strictEqual(Profiles.deleteAccountAdmin(trialReg.accountId), true); assert.strictEqual(Profiles.findAccountByEmail('trial@co.ae'), null); assert.strictEqual(JSON.parse(store.getItem('lumen_accounts') || '{}')[trialReg.accountId], undefined);
+    store.setItem('lumen_accounts', JSON.stringify({ ...JSON.parse(store.getItem('lumen_accounts') || '{}'), 'acc-ghost': { id: 'acc-ghost', email: 'ghost@co.ae', _deleted: true } }));
+    assert.strictEqual(Profiles.findAccountByEmail('ghost@co.ae'), null); assert.strictEqual(JSON.parse(store.getItem('lumen_accounts') || '{}')['acc-ghost'], undefined);
 
     const edgeSrc = fs.readFileSync(path.join(appDir, 'functions', 'api', '[[path]].js'), 'utf8')
         .replace(/export\s+async\s+function\s+onRequest/g, 'async function onRequest') + '\nmodule.exports = { onRequest };';
