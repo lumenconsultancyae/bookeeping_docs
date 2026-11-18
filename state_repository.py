@@ -134,23 +134,28 @@ class LumenStateRepository:
         accounts, _ = self._parse_accounts_and_profiles(full)
         clean_cf_email = str(cf_email or "").strip().lower()
         if clean_cf_email:
-            if clean_cf_email == ADMIN_EMAIL:
-                return "owner"
+            if clean_cf_email == ADMIN_EMAIL: return "owner"
             for acc_id, acc in accounts.items():
                 if str(acc.get("email") or "").strip().lower() == clean_cf_email:
                     return acc_id if acc.get("status") != "suspended" else "unauthenticated"
             return "unauthenticated"
         claimed, clean_sess = str(account_header or "").strip() or "unauthenticated", str(session_header or "").strip()
-        if clean_sess and not self.verify_session_token(clean_sess, claimed):
-            return "unauthenticated"
-        return claimed
+        return "unauthenticated" if (clean_sess and not self.verify_session_token(clean_sess, claimed)) else claimed
+
+    def is_account_ai_enabled(self, account_id: str | None, *, raw_account_header: str | None = None) -> bool:
+        """Return True if the resolved account is entitled to AI features (Advance, Premium, Owner, or AI Add-on)."""
+        caller, raw_hdr = str(account_id or "").strip() or "unauthenticated", str(raw_account_header or "").strip()
+        if caller == "owner": return True
+        if raw_hdr and caller == "unauthenticated": return False
+        accounts, _ = self._parse_accounts_and_profiles(self.get_all_state())
+        acc = accounts.get(caller) if isinstance(accounts.get(caller), dict) else None
+        if not acc: return not bool(raw_hdr and accounts)
+        return str(acc.get("plan") or "basic").strip().lower() in ("advance", "premium", "pro", "enterprise", "owner") or bool(acc.get("aiAddon"))
 
     def resolve_session(self, *, cf_email: str | None = None, account_header: str | None = None, session_header: str | None = None) -> dict[str, object]:
         """Return `/api/v1/auth/session` payload for Cloudflare Zero Trust Access or active session."""
         caller = self.resolve_caller_from_headers(cf_email=cf_email, account_header=account_header, session_header=session_header)
-        if not caller or caller == "unauthenticated":
-            return {"status": "ok", "authenticated": False, "accountId": None}
-        return {"status": "ok", "authenticated": True, "accountId": caller, "sessionToken": self.issue_session_token(caller)}
+        return {"status": "ok", "authenticated": True, "accountId": caller, "sessionToken": self.issue_session_token(caller)} if (caller and caller != "unauthenticated") else {"status": "ok", "authenticated": False, "accountId": None}
 
     def get_scoped_state(self, account_id: str | None = None) -> dict[str, str]:
         """Return state scoped to `account_id`, always stripping `passwordHash` and `salt`."""
@@ -158,23 +163,15 @@ class LumenStateRepository:
         accounts, profiles = self._parse_accounts_and_profiles(full)
         if caller == "owner":
             out = {k: v for k, v in full.items() if k != "lumen_admin_credentials"}
-            if "lumen_accounts" in out:
-                out["lumen_accounts"] = json.dumps({k: strip_account_secrets(v) for k, v in accounts.items()})
-            if "lumen_profiles" in out:
-                out["lumen_profiles"] = json.dumps(profiles)
+            if "lumen_accounts" in out: out["lumen_accounts"] = json.dumps({k: strip_account_secrets(v) for k, v in accounts.items()})
+            if "lumen_profiles" in out: out["lumen_profiles"] = json.dumps(profiles)
             return out
         if caller == "unauthenticated":
-            public_accs = {k: {"id": k, "email": v.get("email", ""), "status": v.get("status", "active")} for k, v in accounts.items() if v.get("email")}
-            return {"lumen_accounts": json.dumps(public_accs), "lumen_profiles": "[]"}
-        owned_profiles = [p for p in profiles if (p.get("accountId") or "owner") == caller]
-        owned_ids, _ = self._profile_ownership_sets(profiles, caller)
-        scoped = {
-            "lumen_accounts": json.dumps({caller: strip_account_secrets(accounts[caller])} if caller in accounts else {}),
-            "lumen_profiles": json.dumps(owned_profiles),
-        }
+            return {"lumen_accounts": json.dumps({k: {"id": k, "email": v.get("email", ""), "status": v.get("status", "active")} for k, v in accounts.items() if v.get("email")}), "lumen_profiles": "[]"}
+        owned_profiles, (owned_ids, _) = [p for p in profiles if (p.get("accountId") or "owner") == caller], self._profile_ownership_sets(profiles, caller)
+        scoped = {"lumen_accounts": json.dumps({caller: strip_account_secrets(accounts[caller])} if caller in accounts else {}), "lumen_profiles": json.dumps(owned_profiles)}
         for k, v in full.items():
-            if k.startswith("profile:") and k[len("profile:") :].split("::", 1)[0] in owned_ids:
-                scoped[k] = v
+            if k.startswith("profile:") and k[len("profile:") :].split("::", 1)[0] in owned_ids: scoped[k] = v
         return scoped
 
     def mutate_state(self, set_items: Mapping[str, str] | None = None, remove_keys: list[str] | None = None, *, clear_all: bool = False) -> int:
@@ -263,7 +260,7 @@ class LumenStateRepository:
                                     if prev.get(sec_key):
                                         nxt[sec_key] = prev[sec_key]
                                 for srv_key in (
-                                    "plan", "status", "locked", "failedAttempts", "resetCodeHash", "resetRequestedAt",
+                                    "plan", "aiAddon", "addons", "status", "locked", "failedAttempts", "resetCodeHash", "resetRequestedAt",
                                     "billingStatus", "lastChargedAmount", "lastChargedAt", "trialStartedAt", "trialEndsAt",
                                     "renewalReminderSentAt", "renewalReminderMessage",
                                 ):
@@ -284,6 +281,10 @@ class LumenStateRepository:
                             req_plan = str(acc_obj.get("plan") or "basic").strip().lower()
                             if req_plan in ("advance", "premium") and not nxt.get("requestedPlan"):
                                 nxt["requestedPlan"] = req_plan
+                            if acc_obj.get("aiAddon") is True or acc_obj.get("requestedAiAddon") is True:
+                                nxt["requestedAiAddon"] = True
+                            nxt["aiAddon"] = False
+                            nxt.pop("addons", None)
                             nxt["plan"] = "basic"
                             nxt["status"] = "active"
                             nxt["locked"] = False

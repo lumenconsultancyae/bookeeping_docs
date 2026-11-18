@@ -520,6 +520,8 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
                 return self._send_json(_handle_state_post(body, repo, caller_acc), status=200)
             if parsed.path == "/api/v1/attachments":
                 return self._send_json(_handle_attachments_post(body, repo, caller_acc), status=200)
+            if not repo.is_account_ai_enabled(caller_acc, raw_account_header=_get_header_case_insensitive(self.headers, "X-Lumen-Account")):
+                return self._send_json(build_error_envelope("plan_upgrade_required", "AI features require the Advance or Premium plan."), status=403)
             content_type = self.headers.get("Content-Type", "")
             question, uploads = _parse_multipart_form_data(content_type, body) if "multipart/form-data" in content_type else _parse_json_prediction_request(body)
             self._send_json(run_agy_prediction(question=question, uploads=uploads), status=200)
@@ -533,13 +535,8 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     server = ThreadingHTTPServer((HOST, PORT), AgyPredictionHandler)
-
-    def _handle_shutdown(signum: int, _frame) -> None:
-        print(f"Received signal {signum}, shutting down agy prediction service...", flush=True)
-        threading.Thread(target=server.shutdown, daemon=True).start()
-
     for sig in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(sig, _handle_shutdown)
+        signal.signal(sig, lambda s, _f: (print(f"Received signal {s}, shutting down agy prediction service...", flush=True), threading.Thread(target=server.shutdown, daemon=True).start()))
     print(f"Starting agy prediction service on http://{HOST}:{PORT} (model={AGY_MODEL})", flush=True)
     try:
         server.serve_forever()
