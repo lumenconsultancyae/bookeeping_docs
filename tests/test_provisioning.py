@@ -34,7 +34,8 @@ class DeploymentFilesStructureTests(unittest.TestCase):
         local_compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("bookkeeping-app:", local_compose)
         self.assertIn("agy-ai:", local_compose)
-        self.assertIn("tunnel:", local_compose)
+        self.assertNotIn("tunnel:", local_compose)
+        self.assertNotIn("agy-tunnel:", local_compose)
         for required_mount in (
             "/agy_service.py:/app/agy_service.py:ro",
             "/invoice_validation.py:/app/invoice_validation.py:ro",

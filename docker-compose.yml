@@ -43,22 +43,6 @@ services:
           - flowise
     restart: unless-stopped
 
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: bookkeeping-tunnel
-    command: tunnel --url http://bookkeeping-app:80
-    depends_on:
-      - bookkeeping-app
-    restart: unless-stopped
-
-  agy-tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: agy-tunnel
-    command: tunnel --url http://agy-ai:3000
-    depends_on:
-      - agy-ai
-    restart: unless-stopped
-
 networks:
   lumen_default:
     external: true
