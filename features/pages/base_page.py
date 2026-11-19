@@ -29,7 +29,7 @@ class BasePage:
 
     VIEW_TARGET_MAP = {
         "Dashboard": "view-dashboard", "Banking": "view-bank", "Cheque Registry": "view-cheques",
-        "Quotes & Estimates": "view-quotes", "Sales Invoices": "view-customer",
+        "Quotes & Estimates": "view-quotes", "Sales Invoices": "view-customer", "Credit Note": "view-credit-notes", "Issue Credit Note": "view-credit-notes",
         "Purchase Orders": "view-po", "Supplier Bills": "view-supplier", "Expenses": "view-expense",
         "Chart of Accounts": "view-coa", "Journal Entries": "view-journal",
         "General Ledger": "view-ledger", "SOA": "view-statement",

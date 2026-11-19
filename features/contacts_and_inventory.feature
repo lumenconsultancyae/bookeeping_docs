@@ -18,7 +18,7 @@ Feature: Customer, Supplier, Inventory, Stock Ledger, and Cheque Directories
       | Customers      | customer     | Oasis Digital Media LLC  | 100223344556603 | 30    |
       | Suppliers      | supplier     | Emirates Paper Mills LLC | 100778899001103 | 45    |
 
-  Scenario: Adding an inventory item calculates markup selling price and records an opening Stock Ledger movement
+  Scenario: Adding an inventory item calculates markup selling price and records an opening SKU-isolated Stock Ledger movement
     When the user navigates to the "Inventory Directory" view
     And the user enters an inventory unit cost of "200.00" AED and a markup of "35" percent
     Then the calculated selling price field should be "270.00"

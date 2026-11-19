@@ -138,31 +138,18 @@ class TestBankingAndMenuNewTab(unittest.TestCase):
                 browser = p.chromium.launch(headless=True, executable_path="/usr/bin/chromium")
                 ctx, page, page_errors, console_errors = _open_authenticated_app(browser, port, handle_api)
 
-                # 6a. Menu links have real hash hrefs, NO arrow button, and automatically open other pages in a new tab on normal click
+                # 6a. Menu links have real hash hrefs, NO arrow button, and switch views in the same tab on normal click
                 self.assertEqual(page.locator(".nav-new-tab-btn").count(), 0, "Hover arrow button should be removed")
                 bank_nav = page.locator('a.nav-item[data-target="view-bank"]')
                 self.assertEqual(bank_nav.get_attribute("href"), "#view-bank")
-                with ctx.expect_page() as new_tab_info:
-                    bank_nav.click()
-                new_tab = new_tab_info.value
-                new_tab.wait_for_function(
+                pages_before_click = len(ctx.pages)
+                bank_nav.click()
+                page.wait_for_function(
                     '() => typeof window.switchView === "function" && document.getElementById("view-bank")?.classList.contains("active")'
                 )
-                self.assertTrue(new_tab.locator("#view-bank").is_visible(), "Clicking Banking menu did not open view-bank in a new tab")
-                self.assertIn("#view-bank", new_tab.url)
-                # Clicking an already-active menu stays in the same tab rather than spawning another duplicate tab
-                pages_before_same_click = len(ctx.pages)
-                new_tab.locator('a.nav-item[data-target="view-bank"]').click()
-                new_tab.wait_for_timeout(150)
-                self.assertEqual(len(ctx.pages), pages_before_same_click)
-                new_tab.close()
-
-                # Verify popup-blocker fallback: when window.open returns null, clicking sidebar switches in-tab
-                page.evaluate("() => { window.__origOpen = window.open; window.open = () => null; }")
-                bank_nav.click()
-                page.wait_for_timeout(100)
-                self.assertTrue(page.locator("#view-bank").is_visible(), "Expected in-tab fallback when window.open returns null")
-                page.evaluate('() => { window.open = window.__origOpen; window.switchView("view-dashboard"); }')
+                self.assertEqual(len(ctx.pages), pages_before_click, "Normal menu click should switch view in the same tab without opening a new tab")
+                self.assertTrue(page.locator("#view-bank").is_visible(), "Clicking Banking menu did not activate view-bank in the current tab")
+                page.evaluate('() => { window.switchView("view-dashboard"); }')
                 page.wait_for_timeout(100)
 
                 # Also verify Ctrl/Meta+Click opens in a new tab
@@ -337,15 +324,13 @@ class TestBankingAndMenuNewTab(unittest.TestCase):
                 )
                 page.wait_for_timeout(150)
 
-                # 4. Clicking General Ledger automatically opens it in a new tab; check "Bank" Inv # and VAT column
-                with ctx.expect_page() as ledger_tab_info:
-                    ledger_nav.click()
-                ledger_tab = ledger_tab_info.value
-                ledger_tab.wait_for_function(
+                # 4. Clicking General Ledger switches view in the same tab; check "Bank" Inv # and VAT column
+                ledger_nav.click()
+                page.wait_for_function(
                     '() => typeof window.loadHistory === "function" && document.getElementById("view-ledger")?.classList.contains("active")'
                 )
-                ledger_tab.wait_for_timeout(150)
-                ledger_rows = ledger_tab.locator("#historyBody tr")
+                page.wait_for_timeout(150)
+                ledger_rows = page.locator("#historyBody tr")
                 self.assertEqual(ledger_rows.count(), 5)
                 bank_inv_cols = [
                     ledger_rows.nth(i).locator("td").nth(1).inner_text().strip()
@@ -354,32 +339,28 @@ class TestBankingAndMenuNewTab(unittest.TestCase):
                 ]
                 self.assertEqual(bank_inv_cols, ["Bank", "Bank", "Bank"])
 
-                bank_rent_vat = ledger_tab.locator("#historyBody tr", has_text="Office Rent Oct").locator("td").nth(8).inner_text().strip()
-                sup_vat = ledger_tab.locator("#historyBody tr", has_text="SUP-VAT-1").locator("td").nth(8).inner_text().strip()
-                cust_vat = ledger_tab.locator("#historyBody tr", has_text="INV-VAT-1").locator("td").nth(8).inner_text().strip()
+                bank_rent_vat = page.locator("#historyBody tr", has_text="Office Rent Oct").locator("td").nth(8).inner_text().strip()
+                sup_vat = page.locator("#historyBody tr", has_text="SUP-VAT-1").locator("td").nth(8).inner_text().strip()
+                cust_vat = page.locator("#historyBody tr", has_text="INV-VAT-1").locator("td").nth(8).inner_text().strip()
                 self.assertEqual(bank_rent_vat, "57.14")
                 self.assertEqual(sup_vat, "50.00")
                 self.assertEqual(cust_vat, "25.00")
 
-                filter_inv_options = ledger_tab.evaluate(
+                filter_inv_options = page.evaluate(
                     '() => Array.from(document.getElementById("filterInv")?.options || []).map(o => o.value)'
                 )
                 self.assertIn("Bank", filter_inv_options)
-                ledger_tab.close()
 
-                # 7. Issue Credit Note moved to sidebar menu bar and opens view-credit-notes cleanly
+                # 7. Credit Note in sidebar menu bar opens view-credit-notes cleanly in the same tab
                 cn_nav = page.locator('a.nav-item[data-target="view-credit-notes"]')
                 self.assertEqual(cn_nav.count(), 1)
-                self.assertEqual(cn_nav.inner_text().strip(), "Issue Credit Note")
+                self.assertEqual(cn_nav.inner_text().strip(), "Credit Note")
                 self.assertEqual(page.locator("#view-customer #taxCreditNoteCard").count(), 0)
-                with ctx.expect_page() as cn_tab_info:
-                    cn_nav.click()
-                cn_tab = cn_tab_info.value
-                cn_tab.wait_for_function('() => document.getElementById("view-credit-notes")?.classList.contains("active")')
-                self.assertTrue(cn_tab.locator("#view-credit-notes #taxCreditNoteCard").is_visible())
-                self.assertTrue(cn_tab.locator("#view-credit-notes #creditNoteForm").is_visible())
-                self.assertTrue(cn_tab.locator("#view-credit-notes #salesDocumentsCard").is_visible())
-                cn_tab.close()
+                cn_nav.click()
+                page.wait_for_function('() => document.getElementById("view-credit-notes")?.classList.contains("active")')
+                self.assertTrue(page.locator("#view-credit-notes #taxCreditNoteCard").is_visible())
+                self.assertTrue(page.locator("#view-credit-notes #creditNoteForm").is_visible())
+                self.assertTrue(page.locator("#view-credit-notes #salesDocumentsCard").is_visible())
 
                 # 8. Sales Invoice without VAT shows Commercial Invoice & removes "(Art. 59 Line Breakdown)"
                 page.evaluate('() => window.switchView("view-customer")')
