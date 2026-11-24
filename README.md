@@ -220,7 +220,7 @@ python3 -B -m unittest discover -s tests -v
 
 ### 3. Execute the Behave BDD E2E Suite
 ```bash
-# Run all 43 scenarios across all 8 features
+# Run all 47 scenarios across all 8 features
 behave
 
 # Run only @smoke tagged scenarios

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import threading
 import unittest
 import urllib.request
+from pathlib import Path
 
 import agy_service
 from features.support_server import BookkeepingRequestHandler, ThreadingHTTPServer
@@ -43,19 +43,21 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
 
     def test_welcome_html_and_js_expose_entrypoint_controls_for_guest_and_authenticated_users(self) -> None:
         welcome_html = (APP_DIR / "welcome.html").read_text(encoding="utf-8")
-        welcome_js = (APP_DIR / "welcome.js").read_text(encoding="utf-8")
+        welcome_js = (APP_DIR / "welcome.js").read_text(encoding="utf-8") + "\n" + (APP_DIR / "welcome-modals.js").read_text(encoding="utf-8")
         for html_token in (
             'href="/welcome"', 'id="btnOpenRegister"', 'id="btnOpenSignIn"', 'id="btnOpenBooks"', 'id="btnWelcomeSignOut"',
             'id="setupPlanSelect"', 'id="linkSwitchToSignIn"', 'id="btnToggleSignInPassword"', 'id="btnToggleSetupPassword"',
             'id="btnToggleSetupConfirmPassword"', 'id="signInRememberMe"', 'id="linkForgotPassword"', 'id="resetPasswordModal"',
             'id="resetEmail"', 'id="resetCode"', 'id="resetNewPassword"', 'id="resetConfirmPassword"', 'id="btnToggleResetPassword"',
-            'id="btnToggleResetConfirmPassword"', 'class="icon-eye"', 'id="setupCardName"', 'id="setupCardNumber"',
-            'id="setupCardExpiry"', 'id="setupCardCvv"', 'id="setupTrialNotice"',
+            'id="btnToggleResetConfirmPassword"', 'class="icon-eye"', 'id="setupPhone"', 'id="setupAcceptTerms"',
+            'id="setupRecaptchaWidget"', 'welcome-modals.js',
         ):
             self.assertIn(html_token, welcome_html)
+        for removed_id in ('id="setupCardName"', 'id="setupCardNumber"', 'id="setupCardExpiry"', 'id="setupCardCvv"'):
+            self.assertNotIn(removed_id, welcome_html)
         self.assertNotIn(">Show</button>", welcome_html)
         self.assertNotIn("btn.textContent = showPlain ? 'Hide' : 'Show'", welcome_js)
-        for js_token in ("btnOpenRegister", "linkSwitchToSignIn", "setupPlanSelect", "isAuthenticated", "signInRememberMe", "requestPasswordReset", "confirmPasswordReset", "ICON_EYE", "ICON_EYE_OFF", 'class="icon-eye-off"', "setupCardNumber", "requireCard: true"):
+        for js_token in ("btnOpenRegister", "linkSwitchToSignIn", "setupPlanSelect", "isAuthenticated", "signInRememberMe", "requestPasswordReset", "confirmPasswordReset", "ICON_EYE", "ICON_EYE_OFF", 'class="icon-eye-off"', "deferCard: true", "captchaAttestation"):
             self.assertIn(js_token, welcome_js)
 
     def test_topbar_and_settings_render_authenticated_user_identity_and_signout(self) -> None:
@@ -101,7 +103,11 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
         self.assertIn('[dir="rtl"]', i18n_css_path.read_text(encoding="utf-8"))
 
     def test_enterprise_ux_palette_layout_monograms_and_docs_gallery(self) -> None:
-        css_files = ("style.css", "components.css", "theme-pro.css", "welcome.css", "profiles.css", "i18n.css", "admin.css")
+        css_files = (
+            "style.css", "components.css", "theme-pro.css", "theme-pro-views.css",
+            "theme-pro-dashboard.css", "theme-pro-lumy.css", "welcome.css", "welcome-modals.css",
+            "profiles.css", "profiles-onboarding.css", "i18n.css", "admin.css", "admin-modals.css",
+        )
         style_bundle = "\n".join((APP_DIR / name).read_text(encoding="utf-8") for name in css_files)
         for token in ("--color-surface-canvas", "--color-surface-elevated", "--color-border-focus", "--text-color", "--primary-color", "--hover-color", "--danger-color", "#0c1a2e", "#1d4ed8", ".two-col-layout", ".data-grid", ".editable-grid", ".form-summary-box", ".financial-summary", "content: attr(data-abbr)"):
             self.assertIn(token, style_bundle)
@@ -172,7 +178,7 @@ class WelcomeEntrypointAndAuthUnitTests(unittest.TestCase):
             self.assertEqual((rem.get("ok"), rem.get("sentTo")), (True, "lock@co.ae"))
             self.assertIn("4242", str(rem.get("message")))
             chg = repo.process_trial_renewal("lock@co.ae")
-            self.assertEqual((chg.get("ok"), chg.get("chargedAmount"), chg.get("billingStatus")), (True, 75, "active_paid"))
+            self.assertEqual((chg.get("ok"), chg.get("chargedAmount"), chg.get("billingStatus")), (True, 129, "active_paid"))
             repo.mutate_state({"lumen_accounts": json.dumps({"acc-lock": {"email": "lock@co.ae", "companyName": "Lock Co", "plan": "advance", "billing": "monthly", "status": "suspended", "autoRenew": True, "billingStatus": "trial"}})})
             susp_chg = repo.process_trial_renewal("lock@co.ae")
             self.assertEqual((susp_chg.get("ok"), susp_chg.get("error")), (False, "Account is suspended."))
@@ -226,10 +232,12 @@ global.CustomEvent = class CustomEvent { constructor(name, opts) { this.name = n
 const planAccess = require(path.join(appDir, 'plan-access.js'));
 assert.strictEqual(planAccess.normalizePlan('free'), 'basic');
 assert.strictEqual(planAccess.normalizePlan('trial'), 'basic');
-assert.strictEqual(planAccess.normalizePlan('pro'), 'advance');
+assert.strictEqual(planAccess.normalizePlan('pro'), 'premium');
 assert.strictEqual(planAccess.normalizePlan('enterprise'), 'premium');
 
+require(path.join(appDir, 'profiles-session.js'));
 const Profiles = require(path.join(appDir, 'profiles-storage.js'));
+require(path.join(appDir, 'auth-billing.js'));
 const Auth = require(path.join(appDir, 'auth.js'));
 
 assert.strictEqual(Profiles.isAuthenticated(), false);
@@ -318,7 +326,7 @@ return (async () => {
     assert.strictEqual(Profiles.setAutoRenew(true, trialReg.accountId), true);
     const renewRes = await Auth.processTrialRenewal('trial@co.ae');
     assert.strictEqual(renewRes.ok, true);
-    assert.strictEqual(renewRes.chargedAmount, 75);
+    assert.strictEqual(renewRes.chargedAmount, 129);
     assert.strictEqual(Profiles.findAccountByEmail('trial@co.ae').billingStatus, 'active_paid');
     assert.strictEqual(Profiles.setAutoRenew(true, trialReg.accountId), true);
     assert.strictEqual(Profiles.findAccountByEmail('trial@co.ae').billingStatus, 'active_paid');
@@ -344,20 +352,22 @@ return (async () => {
     store.setItem('lumen_accounts', JSON.stringify({ ...JSON.parse(store.getItem('lumen_accounts') || '{}'), 'acc-ghost': { id: 'acc-ghost', email: 'ghost@co.ae', _deleted: true } }));
     assert.strictEqual(Profiles.findAccountByEmail('ghost@co.ae'), null); assert.strictEqual(JSON.parse(store.getItem('lumen_accounts') || '{}')['acc-ghost'], undefined);
 
-    const edgeSrc = fs.readFileSync(path.join(appDir, 'functions', 'api', '[[path]].js'), 'utf8')
-        .replace(/export\s+async\s+function\s+onRequest/g, 'async function onRequest') + '\nmodule.exports = { onRequest };';
+    const stripEsm = (s) => s.replace(/^\s*import\s+[\s\S]*?from\s+["'][^"']+["'];?/gm, '').replace(/^\s*export\s+(?=(async\s+)?function|const\s)/gm, '');
+    const rawEdgeCrypto = fs.readFileSync(path.join(appDir, 'src', 'edge-crypto.js'), 'utf8');
+    const rawEdgeFn = fs.readFileSync(path.join(appDir, 'functions', 'api', '[[path]].js'), 'utf8');
+    assert.strictEqual(rawEdgeFn.includes('exports.onRequest') || rawEdgeFn.includes('require(') || rawEdgeCrypto.includes('exports.'), false);
     const edgeMod = { exports: {} };
     let lastFetched = null, shouldThrowFetch = false;
     const edgeSandbox = {
-        module: edgeMod, exports: edgeMod.exports, URL, Headers, Response,
-        crypto: global.crypto || (typeof crypto !== 'undefined' ? crypto : undefined), TextEncoder,
+        module: edgeMod, exports: edgeMod.exports, URL, URLSearchParams, AbortSignal, Headers, Response,
+        crypto: global.crypto || (typeof crypto !== 'undefined' ? crypto : undefined), TextEncoder, Uint8Array, Uint32Array, DataView,
         fetch: async (url, init) => {
             if (shouldThrowFetch) throw new Error('ECONNREFUSED');
             lastFetched = { url, init };
             return new Response(JSON.stringify({ text: 'ok' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         }
     };
-    vm.runInNewContext(edgeSrc, edgeSandbox);
+    vm.runInNewContext(`${stripEsm(rawEdgeCrypto)}\n${stripEsm(rawEdgeFn)}\nmodule.exports = { onRequest };`, edgeSandbox);
     const { onRequest } = edgeMod.exports;
 
     const res405 = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/prediction/1', { method: 'DELETE' }), env: { AGY_BACKEND_URL: 'https://backend.example.com' } });
@@ -410,9 +420,11 @@ return (async () => {
         async delete(k) { r2Objects.delete(k); }
     };
     const edgeEnvD1 = { LUMEN_DB: fakeD1, LUMEN_ATTACHMENTS: fakeR2, LUMEN_SESSION_SECRET: 'edge-sess-sec' };
+    const edgeHdrs = (acc, tok) => ({ 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', ...(acc ? { 'X-Lumen-Account': acc } : {}), ...(tok ? { 'X-Lumen-Session': tok } : {}) });
+    const ownerTok = (await (await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/login', { method: 'POST', headers: edgeHdrs(), body: JSON.stringify({ email: 'admin@lumenconsultancy.net', password: 'LumenAdmin2026' }) }), env: edgeEnvD1 })).json()).sessionToken;
     await onRequest({
         request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': 'owner' },
+            method: 'POST', headers: edgeHdrs('owner', ownerTok),
             body: JSON.stringify({ set: {
                 lumen_accounts: JSON.stringify({ 'acc-a': { email: 'a@co.ae', companyName: 'Co A', plan: 'basic', status: 'active', salt: rawTenantCreds.salt, passwordHash: rawTenantCreds.passwordHash }, 'acc-b': { email: 'b@co.ae', companyName: 'Co B', plan: 'advance', status: 'suspended', salt: 's2', passwordHash: 'h2' } }),
                 lumen_profiles: JSON.stringify([{ id: 'prof-a', name: 'Co A', accountId: 'acc-a' }, { id: 'prof-b', name: 'Co B', accountId: 'acc-b' }]),
@@ -420,58 +432,53 @@ return (async () => {
             } })
         }), env: edgeEnvD1
     });
-    const resOwnerState = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'GET', headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': 'owner' } }), env: edgeEnvD1 });
+    const resOwnerState = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'GET', headers: edgeHdrs('owner', ownerTok) }), env: edgeEnvD1 });
     assert.strictEqual(resOwnerState.headers.get('Cache-Control'), 'no-store, no-cache, must-revalidate');
     assert.strictEqual(Boolean((await resOwnerState.json()).state['lumen_admin_credentials']), false);
-    const resUnauthMutate = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' }, body: JSON.stringify({ set: { 'profile:prof-a::bookkeeping_history_v2': '[]' } }) }), env: edgeEnvD1 });
+    const resUnauthMutate = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'POST', headers: edgeHdrs(), body: JSON.stringify({ set: { 'profile:prof-a::bookkeeping_history_v2': '[]' } }) }), env: edgeEnvD1 });
     assert.strictEqual((await resUnauthMutate.json()).updated, 0);
-    const resEdgeLogin = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' }, body: JSON.stringify({ email: 'a@co.ae', password: 'StrongPassword!123' }) }), env: edgeEnvD1 });
+    const resEdgeLogin = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/login', { method: 'POST', headers: edgeHdrs(), body: JSON.stringify({ email: 'a@co.ae', password: 'StrongPassword!123' }) }), env: edgeEnvD1 });
     const edgeLoginData = await resEdgeLogin.json();
     assert.strictEqual(edgeLoginData.ok, true); assert.strictEqual(edgeLoginData.accountId, 'acc-a');
     assert(String(edgeLoginData.sessionToken || '').startsWith('sess.acc-a.'));
 
     // Edge password-reset endpoints (/api/v1/auth/password-reset/request & /api/v1/auth/password-reset/confirm) + non-string rejection
-    const resEdgeBadLoginType = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' }, body: JSON.stringify({ email: ['a@co.ae'], password: true }) }), env: edgeEnvD1 });
+    const resEdgeBadLoginType = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/login', { method: 'POST', headers: edgeHdrs(), body: JSON.stringify({ email: ['a@co.ae'], password: true }) }), env: edgeEnvD1 });
     assert.strictEqual(resEdgeBadLoginType.status, 400);
-    const resEdgeResetReq = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/password-reset/request', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' }, body: JSON.stringify({ email: 'a@co.ae' }) }), env: edgeEnvD1 });
+    const resEdgeResetReq = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/password-reset/request', { method: 'POST', headers: edgeHdrs(), body: JSON.stringify({ email: 'a@co.ae' }) }), env: edgeEnvD1 });
     const edgeResetReqData = await resEdgeResetReq.json();
-    assert.strictEqual(edgeResetReqData.ok, true);
-    assert.strictEqual(String(edgeResetReqData.resetCode || '').length, 6);
-    const resEdgeBadConfType = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/password-reset/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' }, body: JSON.stringify({ email: 'a@co.ae', code: edgeResetReqData.resetCode, newPassword: ['a', 1, 2, 3, 4, 5, 6, 7] }) }), env: edgeEnvD1 });
+    assert.strictEqual(edgeResetReqData.ok, true); assert.strictEqual(String(edgeResetReqData.resetCode || '').length, 6);
+    const resEdgeBadConfType = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/password-reset/confirm', { method: 'POST', headers: edgeHdrs(), body: JSON.stringify({ email: 'a@co.ae', code: edgeResetReqData.resetCode, newPassword: ['a', 1, 2, 3, 4, 5, 6, 7] }) }), env: edgeEnvD1 });
     assert.strictEqual(resEdgeBadConfType.status, 400);
-    const resEdgeResetConf = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/password-reset/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev' }, body: JSON.stringify({ email: 'a@co.ae', code: edgeResetReqData.resetCode, newPassword: 'StrongPassword!123' }) }), env: edgeEnvD1 });
+    const resEdgeResetConf = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/password-reset/confirm', { method: 'POST', headers: edgeHdrs(), body: JSON.stringify({ email: 'a@co.ae', code: edgeResetReqData.resetCode, newPassword: 'StrongPassword!123' }) }), env: edgeEnvD1 });
     assert.strictEqual((await resEdgeResetConf.json()).ok, true);
 
-    const resSuspCfSession = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/session', { method: 'GET', headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'Cf-Access-Authenticated-User-Email': 'b@co.ae' } }), env: edgeEnvD1 });
+    const resSuspCfSession = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/auth/session', { method: 'GET', headers: { ...edgeHdrs(), 'Cf-Access-Authenticated-User-Email': 'b@co.ae' } }), env: edgeEnvD1 });
     assert.strictEqual((await resSuspCfSession.json()).authenticated, false);
 
-    await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/attachments', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': 'acc-a', 'X-Lumen-Session': edgeLoginData.sessionToken }, body: JSON.stringify({ key: 'prof-a::att-edge-1', data: 'data:image/png;base64,AAAA' }) }), env: edgeEnvD1 });
-    const resAttGet = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/attachments?key=prof-a%3A%3Aatt-edge-1', { method: 'GET', headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': 'acc-a', 'X-Lumen-Session': edgeLoginData.sessionToken } }), env: edgeEnvD1 });
+    await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/attachments', { method: 'POST', headers: edgeHdrs('acc-a', edgeLoginData.sessionToken), body: JSON.stringify({ key: 'prof-a::att-edge-1', data: 'data:image/png;base64,AAAA' }) }), env: edgeEnvD1 });
+    const resAttGet = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/attachments?key=prof-a%3A%3Aatt-edge-1', { method: 'GET', headers: edgeHdrs('acc-a', edgeLoginData.sessionToken) }), env: edgeEnvD1 });
     assert.strictEqual((await resAttGet.json()).data, 'data:image/png;base64,AAAA');
-    await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/attachments', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': 'acc-a', 'X-Lumen-Session': edgeLoginData.sessionToken }, body: JSON.stringify({ remove: ['prof-a::att-edge-1'] }) }), env: edgeEnvD1 });
-    const resAttAfterDel = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/attachments?key=prof-a%3A%3Aatt-edge-1', { method: 'GET', headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': 'acc-a', 'X-Lumen-Session': edgeLoginData.sessionToken } }), env: edgeEnvD1 });
+    await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/attachments', { method: 'POST', headers: edgeHdrs('acc-a', edgeLoginData.sessionToken), body: JSON.stringify({ remove: ['prof-a::att-edge-1'] }) }), env: edgeEnvD1 });
+    const resAttAfterDel = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/attachments?key=prof-a%3A%3Aatt-edge-1', { method: 'GET', headers: edgeHdrs('acc-a', edgeLoginData.sessionToken) }), env: edgeEnvD1 });
     assert.strictEqual((await resAttAfterDel.json()).data, null);
 
-    const resTenantA = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'GET', headers: { 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': 'acc-a' } }), env: edgeEnvD1 });
+    const resTenantA = await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'GET', headers: edgeHdrs('acc-a', edgeLoginData.sessionToken) }), env: edgeEnvD1 });
     const tenantAData = await resTenantA.json();
     assert.strictEqual(Boolean(tenantAData.state['profile:prof-a::bookkeeping_history_v2']), true);
     assert.strictEqual(Boolean(tenantAData.state['profile:prof-b::bookkeeping_history_v2']), false);
     assert.strictEqual(Boolean(tenantAData.state['lumen_admin_credentials']), false);
     const tenantAAccounts = JSON.parse(tenantAData.state.lumen_accounts || '{}');
-    assert.strictEqual(Boolean(tenantAAccounts['acc-a']), true); assert.strictEqual(Boolean(tenantAAccounts['acc-b']), false);
-    assert.strictEqual(Boolean(tenantAAccounts['acc-a'].passwordHash), false);
+    assert.strictEqual(Boolean(tenantAAccounts['acc-a']) && !tenantAAccounts['acc-b'] && !tenantAAccounts['acc-a'].passwordHash, true);
     d1Tables.attachments.set('prof-b::att-b1', 'data:image/png;base64,BBBB');
-    const edgeHdrs = (acc) => ({ 'Content-Type': 'application/json', 'X-Lumen-Client': 'lumen-bookkeeping-web', 'Origin': 'https://lumen-bookkeeping.pages.dev', 'X-Lumen-Account': acc });
-    await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'POST', headers: edgeHdrs('owner'), body: JSON.stringify({ set: { lumen_accounts: JSON.stringify({ 'acc-b': { _deleted: true } }), lumen_profiles: JSON.stringify([{ id: 'prof-b', accountId: 'acc-b', _deleted: true }]) } }) }), env: edgeEnvD1 });
-    assert.strictEqual(d1Tables.app_state.has('profile:prof-b::bookkeeping_history_v2'), false); assert.strictEqual(d1Tables.attachments.has('prof-b::att-b1'), false);
-    assert.strictEqual(Boolean(JSON.parse(d1Tables.app_state.get('lumen_accounts') || '{}')['acc-b']), false);
+    await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'POST', headers: edgeHdrs('owner', ownerTok), body: JSON.stringify({ set: { lumen_accounts: JSON.stringify({ 'acc-b': { _deleted: true } }), lumen_profiles: JSON.stringify([{ id: 'prof-b', accountId: 'acc-b', _deleted: true }]) } }) }), env: edgeEnvD1 });
+    assert.strictEqual(d1Tables.app_state.has('profile:prof-b::bookkeeping_history_v2') || d1Tables.attachments.has('prof-b::att-b1') || Boolean(JSON.parse(d1Tables.app_state.get('lumen_accounts') || '{}')['acc-b']), false);
     await onRequest({ request: new Request('https://lumen-bookkeeping.pages.dev/api/v1/state', { method: 'POST', headers: edgeHdrs('acc-b'), body: JSON.stringify({ set: { lumen_accounts: JSON.stringify({ 'acc-b': { email: 'b@co.ae', autoRenew: false } }) } }) }), env: edgeEnvD1 });
     assert.strictEqual(Boolean(JSON.parse(d1Tables.app_state.get('lumen_accounts') || '{}')['acc-b']), false);
     await Auth.signInAdmin('admin@lumenconsultancy.net', 'LumenAdmin2026'); Profiles.updateAccountAdmin(reg.accountId, { plan: 'basic' });
     await Auth.signIn('tenant1@example.com', 'StrongPassword!123'); assert.strictEqual(Profiles.getPlan(), 'basic');
     const PlanGate = require(path.join(appDir, 'plan-gating.js'));
-    assert.strictEqual(PlanGate.canOpen('view-dashboard'), true); assert.strictEqual(PlanGate.canOpen('view-audit'), false);
-    assert.strictEqual(PlanGate.canOpen('view-equity-statement'), false); assert.strictEqual(PlanGate.canOpen('view-tax'), false);
+    assert.strictEqual(PlanGate.canOpen('view-dashboard') && !PlanGate.canOpen('view-audit') && !PlanGate.canOpen('view-equity-statement') && !PlanGate.canOpen('view-tax'), true);
 
     let idbPutCalls = 0, idbDeletedDb = null;
     global.window.indexedDB = global.indexedDB = {
@@ -481,8 +488,7 @@ return (async () => {
             setImmediate(() => {
                 req.result = { createObjectStore() {}, transaction() {
                     const tx = { objectStore: () => ({ put() { idbPutCalls += 1; return {}; }, get: () => ({}), delete: () => ({}) }) };
-                    setImmediate(() => { if (tx.oncomplete) tx.oncomplete(); });
-                    return tx;
+                    setImmediate(() => { if (tx.oncomplete) tx.oncomplete(); }); return tx;
                 } };
                 if (req.onsuccess) req.onsuccess();
             });
@@ -494,20 +500,16 @@ return (async () => {
     const Attachments = require(path.join(appDir, 'attachments-store.js'));
     assert.strictEqual(idbDeletedDb, 'lumen_books_attachments');
     const offloaded = Attachments.offload([{ id: 'inv-att-1', fileBase64: 'data:image/png;base64,BBBB' }]);
-    assert.strictEqual(offloaded[0].fileBase64, undefined);
-    assert.strictEqual(offloaded[0].hasFile, true);
+    assert.strictEqual(offloaded[0].fileBase64, undefined); assert.strictEqual(offloaded[0].hasFile, true);
     assert.strictEqual(await Attachments.load('inv-att-1'), 'data:image/png;base64,BBBB');
-    await Attachments.flush();
-    assert.strictEqual(idbPutCalls, 0);
-    await Attachments.remove('inv-att-1');
-    await Attachments.flush();
+    await Attachments.flush(); assert.strictEqual(idbPutCalls, 0);
+    await Attachments.remove('inv-att-1'); await Attachments.flush();
 
     let queryCacheCleared = 0;
     global.window.LumenQueryCache = { clear() { queryCacheCleared += 1; } };
     const serverStateFromComputerA = Profiles.getServerStateSnapshot();
     Profiles.signOut();
-    assert.strictEqual(queryCacheCleared, 1);
-    assert.deepStrictEqual(Profiles.getServerStateSnapshot(), {});
+    assert.strictEqual(queryCacheCleared, 1); assert.deepStrictEqual(Profiles.getServerStateSnapshot(), {});
     backing.clear();
     global.window.fetch = async () => ({ ok: true, status: 200, json: async () => ({ status: 'ok', state: serverStateFromComputerA }) });
     await Profiles.syncFromServer();
@@ -515,13 +517,10 @@ return (async () => {
     const seenTenant = Profiles.listAllAccounts().find((a) => a.id === reg.accountId);
     assert(seenTenant && seenTenant.companyName === 'Tenant One LLC' && seenTenant.uploadedInvoices === 1);
     Profiles.updateAccountAdmin(reg.accountId, { status: 'suspended', plan: 'basic' });
-    assert.strictEqual(Profiles.impersonateAccount(reg.accountId), true);
-    assert.strictEqual(Profiles.isImpersonating(), true);
-    assert.strictEqual(Profiles.getPlan(), 'premium');
-    assert.strictEqual(PlanGate.canOpen('view-audit'), true);
+    assert.strictEqual(Profiles.impersonateAccount(reg.accountId), true); assert.strictEqual(Profiles.isImpersonating(), true);
+    assert.strictEqual(Profiles.getPlan(), 'premium'); assert.strictEqual(PlanGate.canOpen('view-audit'), true);
     const ledgerOnCompB = JSON.parse(store.getItem('bookkeeping_history_v2') || '[]');
-    assert.strictEqual(ledgerOnCompB.length, 1);
-    assert.strictEqual(ledgerOnCompB[0].id, 'tenant-1-inv');
+    assert.strictEqual(ledgerOnCompB.length, 1); assert.strictEqual(ledgerOnCompB[0].id, 'tenant-1-inv');
     console.log(JSON.stringify({ status: 'ok' }));
 })();
 """
@@ -529,16 +528,13 @@ return (async () => {
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(proc.stdout.strip().splitlines()[-1])["status"], "ok")
         script_js = "\n".join([(APP_DIR / "script.js").read_text(encoding="utf-8"), *(p.read_text(encoding="utf-8") for p in sorted(APP_DIR.glob("app-*.js")))])
-        self.assertIn("targetEl.classList.contains('app-view')", script_js)
-        self.assertIn("window.LumenPlanGate.canOpen(targetId)", script_js)
-        self.assertIn("sidebar-collapsed", script_js)
+        self.assertTrue(all(t in script_js for t in ("targetEl.classList.contains('app-view')", "window.LumenPlanGate.canOpen(targetId)", "sidebar-collapsed")))
         for doc_rel in ("docs/product/prd-product-requirements.md", "docs/product/user-guide-and-release-notes.md"):
             doc_text = (REPO_ROOT / doc_rel).read_text(encoding="utf-8")
-            self.assertIn("Corporate Tax Only (0% VAT)", doc_text)
-            self.assertIn("PBKDF2-SHA256 (120,000 iterations)", doc_text)
+            self.assertIn("Corporate Tax Only (0% VAT)", doc_text); self.assertIn("PBKDF2-SHA256 (120,000 iterations)", doc_text)
         for doc_rel in ("README.md", "docs/product/prd-product-requirements.md", "docs/product/user-guide-and-release-notes.md", "docs/technical/architecture-and-execution-flow.md", "docs/technical/sdd-system-design.md", "docs/technical/operational-runbook.md"):
             self.assertNotIn("lumen_attachments_v1", (REPO_ROOT / doc_rel).read_text(encoding="utf-8"))
-        style_bundle = "\n".join((APP_DIR / name).read_text(encoding="utf-8") for name in ("style.css", "components.css", "theme-pro.css", "welcome.css", "admin.css"))
+        style_bundle = "\n".join((APP_DIR / name).read_text(encoding="utf-8") for name in ("style.css", "components.css", "theme-pro.css", "theme-pro-views.css", "theme-pro-dashboard.css", "theme-pro-lumy.css", "welcome.css", "welcome-modals.css", "admin.css", "admin-modals.css"))
         for token in ("--color-surface-canvas", "--color-surface-elevated", "--color-border-focus", "tabular-nums"):
             self.assertIn(token, style_bundle)
         html_bundle = "\n".join([(APP_DIR / "index.html").read_text(encoding="utf-8"), *(p.read_text(encoding="utf-8") for p in sorted(APP_DIR.glob("views-*.js")))])
@@ -546,5 +542,4 @@ return (async () => {
             self.assertIn(ux_id, html_bundle)
 
 
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == "__main__": unittest.main()

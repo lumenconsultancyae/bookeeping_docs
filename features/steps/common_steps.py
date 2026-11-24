@@ -197,10 +197,11 @@ def step_verify_welcome_pricing_and_promo(
     promo_text: str,
 ) -> None:
     info = context.base_page.get_welcome_pricing_plans()
-    assert len(info) == 3, f"Expected 3 plan cards on /welcome, got {len(info)}: {info}"
+    assert len(info) == 4, f"Expected 4 plan cards on /welcome, got {len(info)}: {info}"
     basic_card = next((c for c in info if "Basic" in c["title"]), None)
     assert basic_card and basic_card["amount"].strip() == basic_price, (
         f"Expected Basic plan price '{basic_price}', got {basic_card}"
     )
     for card in info:
-        assert promo_text in card["promo"], f"Expected '{promo_text}' on tier '{card['title']}', got '{card['promo']}'"
+        expected = "Free Setup" if "Managed" in card["title"] else promo_text
+        assert expected in card["promo"], f"Expected '{expected}' on tier '{card['title']}', got '{card['promo']}'"

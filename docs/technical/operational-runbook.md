@@ -77,7 +77,7 @@
      ```
 4. **Configure Custom Prediction Endpoint (If Non-Default)**:
    - By default, Nginx (`default.conf`) routes `/api/v1/prediction/*` directly to `http://agy-ai:3000/api/v1/prediction/*`.
-   - To override the endpoint in the UI, open `http://localhost:9091`, navigate to **Settings**, enter the custom endpoint URL under **AI Integration Settings**, and click **Save AI Settings**.
+   - To configure AI or Peppol ASP defaults centrally, sign in at `/admin` and open **Platform Integrations** (`#adminIntegrationsPanel`). For local/self-hosted overrides in the app UI, open `http://localhost:9091`, navigate to **Settings**, enter the custom endpoint URL under **AI Integration Settings**, and click **Save AI Settings**.
 
 ---
 
@@ -128,7 +128,7 @@
    python3 -B -m unittest discover -s tests -v
    behave
    ```
-   - **Expected Output**: Zero TypeScript diagnostics (`tsc --noEmit`), 100% passing TypeScript domain unit tests (`tests/domain-accounting.test.ts`), 100% passing unit, HTTP integration, and browser DOM behavioral tests (`tests/test_agy_service.py`, `tests/test_provisioning.py`, `tests/test_provisioning_clients.py`, `tests/test_auth_and_welcome.py`, `tests/test_faf_export.py`, `tests/test_ledger_and_timesheet_deletion.py`, `tests/test_payslip_and_timesheet_filter.py`, `tests/test_react_migration.py`, `tests/test_uae_compliance.py`, `tests/test_ui_feedback_and_forms.py`, `tests/test_ui_tables_and_layout.py`, and `tests/test_whatsapp_workflows.py`), 8 features passed (43 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
+   - **Expected Output**: Zero TypeScript diagnostics (`tsc --noEmit`), 100% passing TypeScript domain unit tests (`tests/domain-accounting.test.ts`), 100% passing unit, HTTP integration, and browser DOM behavioral tests (`tests/test_agy_service.py`, `tests/test_provisioning.py`, `tests/test_provisioning_clients.py`, `tests/test_auth_and_welcome.py`, `tests/test_faf_export.py`, `tests/test_ledger_and_timesheet_deletion.py`, `tests/test_payslip_and_timesheet_filter.py`, `tests/test_react_migration.py`, `tests/test_uae_compliance.py`, `tests/test_ui_feedback_and_forms.py`, `tests/test_ui_tables_and_layout.py`, and `tests/test_whatsapp_workflows.py`), 8 features passed (47 scenarios) in `behave`, zero failed assertions, and zero `SEVERE` browser console errors.
 
 ---
 

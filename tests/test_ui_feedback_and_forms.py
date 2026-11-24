@@ -10,7 +10,6 @@ User stories covered:
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
 import unittest
 
@@ -353,8 +352,9 @@ class InlineFormValidationComponentTests(unittest.TestCase):
         self.assertEqual(result["normDisp"], "15/08/26")
 
     def test_journal_date_filter_sorts_chronologically_and_admin_confirm_delete_resets_on_escape(self) -> None:
-        from tests.js_runner import run_node_script
         import json
+
+        from tests.js_runner import run_node_script
         web_dir = APP_DIR
         script = f"""
         const fs = require('fs'), vm = require('vm'), elements = {{}};
@@ -383,7 +383,7 @@ class InlineFormValidationComponentTests(unittest.TestCase):
         vm.runInContext(fs.readFileSync({json.dumps(str(web_dir / "app-journals-and-coa.js"))}, 'utf8'), ctx);
         vm.runInContext('loadHistory();', ctx);
         const dateOptions = Array.from(elements.filterDate.innerHTML.matchAll(/value="([^"]+)"/g)).map(m => m[1]);
-        const adminSrc = fs.readFileSync({json.dumps(str(web_dir / "admin.js"))}, 'utf8');
+        const adminSrc = fs.readFileSync({json.dumps(str(web_dir / "admin.js"))}, 'utf8') + '\\n' + fs.readFileSync({json.dumps(str(web_dir / "admin-modals.js"))}, 'utf8');
         console.log(JSON.stringify({{
             dateOptions,
             hasResetConfirm: adminSrc.includes('function resetConfirmDelete(') && adminSrc.includes("e.key === 'Escape'"),
@@ -493,8 +493,9 @@ class InlineFormValidationComponentTests(unittest.TestCase):
         self.assertIn("No employees", res_after["emptyStateText"])
 
     def test_profiles_storage_fifo_sync_chain_serializes_concurrent_state_mutations(self) -> None:
-        from tests.js_runner import run_node_script
         import json
+
+        from tests.js_runner import run_node_script
 
         script = f"""
         const fs = require('fs'), vm = require('vm');

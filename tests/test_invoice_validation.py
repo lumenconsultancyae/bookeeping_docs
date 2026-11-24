@@ -11,17 +11,17 @@ User stories covered:
 from __future__ import annotations
 
 import base64
-from http.server import ThreadingHTTPServer
 import json
-from pathlib import Path
 import subprocess
 import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import MagicMock, patch
 import urllib.error
 import urllib.request
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import agy_service
 import einvoice_service
@@ -39,7 +39,7 @@ TINY_VALID_PNG = base64.b64decode(
 class _RejectingPredictionHandler(BookkeepingRequestHandler):
     """Test server handler returning HTTP 422 invalid_invoice_document on AI predictions."""
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         if self.path.startswith("/api/v1/prediction/"):
             msg = "PDF contains only dog photos and is not a valid invoice."
             t = json.dumps({"isValidInvoice": False, "documentType": "non_invoice", "rejectionReason": "PDF contains only dog photos."})
@@ -66,7 +66,8 @@ class BackendInvoiceValidationTests(unittest.TestCase):
         cls.server.server_close()
 
     def _post_prediction(self, body: dict) -> tuple[int, dict]:
-        headers = {"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091"}
+        tok = agy_service.get_state_repo().issue_session_token("owner")
+        headers = {"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091", "X-Lumen-Account": "owner", "X-Lumen-Session": tok}
         req = urllib.request.Request(f"{self.base_url}/api/v1/prediction/test", data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
@@ -405,7 +406,7 @@ class ControllerDomRejectionTests(unittest.TestCase):
         prediction_mode = {"mode": "timeout"}
 
         class _ConfigurablePredictionHandler(BookkeepingRequestHandler):
-            def do_POST(self) -> None:  # noqa: N802
+            def do_POST(self) -> None:
                 if self.path.startswith("/api/v1/prediction/"):
                     mode = prediction_mode["mode"]
                     if mode == "http_422":

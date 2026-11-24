@@ -27,7 +27,7 @@ class ReactSpaEntrypointAndBundleTests(unittest.TestCase):
         index_html = (APP_DIR / "index.html").read_text(encoding="utf-8")
         script_tags = re.findall(r"<script\b[^>]*>", index_html, flags=re.IGNORECASE)
         self.assertIn('<div id="root"></div>', index_html)
-        self.assertLessEqual(len(script_tags), 6, f"Expected <= 6 script tags, found {len(script_tags)}")
+        self.assertLessEqual(len(script_tags), 9, f"Expected <= 9 script tags, found {len(script_tags)}")
         for required_script in ("react-runtime.js", "react-store.js", "views-dashboard.js", "react-app.js"):
             self.assertIn(required_script, index_html)
             self.assertTrue((APP_DIR / required_script).is_file(), f"Missing {required_script}")
@@ -339,7 +339,7 @@ class ReactAppShellAndDashboardMountTests(unittest.TestCase):
         self.dom = DomComponentHarness()
         self.dom.mount(
             '<div id="root"></div>',
-            modules=("react-runtime.js", "react-store.js", "views-dashboard.js"),
+            modules=("react-runtime.js", "render-slot.js", "react-store.js", "views-dashboard-kpis.js", "views-lumy-ai.js", "views-dashboard.js"),
         )
 
     def test_lumen_app_renders_shell_dashboard_and_bidirectional_route_states(self) -> None:
@@ -444,6 +444,7 @@ class ReactAppShellAndDashboardMountTests(unittest.TestCase):
 
     def test_three_phase_typescript_and_official_react_18_migration(self) -> None:
         import json
+
         from tests.js_runner import run_node_script
         tsconfig = json.loads((APP_DIR / "tsconfig.json").read_text(encoding="utf-8"))
         self.assertTrue(tsconfig["compilerOptions"]["allowJs"] and tsconfig["compilerOptions"]["strict"])
@@ -488,7 +489,7 @@ class ReactAppShellAndDashboardMountTests(unittest.TestCase):
         self.assertEqual(ts_run.returncode, 0, f"TypeScript domain tests failed: {ts_run.stderr}")
         self.assertIn("VITEST_PASSED:9", ts_run.stdout)
         dom = DomComponentHarness()
-        dom.mount('<div id="root"></div>', modules=("react-runtime.js", "react-store.js", "views-dashboard.js", "views-transactions.js", "views-workforce-and-quotes.js", "views-operations.js"))
+        dom.mount('<div id="root"></div>', modules=("react-runtime.js", "render-slot.js", "react-store.js", "views-dashboard-kpis.js", "views-lumy-ai.js", "views-dashboard.js", "views-transactions.js", "views-workforce-and-quotes.js", "views-operations.js"))
         res = dom.run(r"""
             const { createElement: h, htmlToVNode } = window.React;
             const { createRoot, flushSync, renderHtml } = window.ReactDOM;

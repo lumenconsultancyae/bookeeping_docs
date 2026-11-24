@@ -38,7 +38,7 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
   Scenario: Unauthenticated visitors are redirected to /welcome to register and can sign out and sign back in
     When an unauthenticated visitor opens the application root
     Then the browser should redirect to the "/welcome" entrypoint
-    And the welcome pricing plans should display Basic at "50" AED and "1 Month Free" promotion on all tiers
+    And the welcome pricing plans should display Basic at "69" AED and "15 Days Free" promotion on all tiers
     When the visitor registers company "Lumen Advisory" with password "Lumen2026" on the "premium" plan
     Then the dashboard page title should be "Dashboard"
     And the topbar should display the signed-in user email
@@ -69,11 +69,11 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     And the user signs out from the application topbar
     Then the browser should redirect to the "/welcome" entrypoint
     And the document language should be "ar" with direction "rtl"
-    And the welcome hero heading should contain "مرحباً بك في"
+    And the welcome hero heading should contain "محاسبة إماراتية"
     When a verification screenshot "welcome_arabic_rtl" is captured
     And the user toggles the topbar language switcher
     Then the document language should be "en" with direction "ltr"
-    And the welcome hero heading should contain "Welcome to"
+    And the welcome hero heading should contain "UAE accounting on autopilot"
     When a verification screenshot "welcome_english_ltr" is captured
 
   @legal @admin
@@ -94,13 +94,14 @@ Feature: Executive Dashboard KPIs and Financial Breakdown
     And the user navigates to the "Settings" view
     And the customer submits a plan upgrade request from Settings
     Then the Settings Subscription Plan card should display "Upgrade requested: Advance (Pending Admin Approval)"
-    When the customer cancels and then resumes trial auto-renewal in Settings
+    When the customer saves payment card "4242 4242 4242 4242" in Settings
+    And the customer cancels and then resumes trial auto-renewal in Settings
     And the administrator signs in to the Super-Admin Console with email "admin@lumenconsultancy.net" and password "LumenAdmin2026"
     Then the Super-Admin Console should display MRR metrics and list the registered company with a pending upgrade
     When the administrator approves the pending upgrade request for the registered company
     Then the Super-Admin Console should show no pending upgrade request for the registered company
     When the administrator sends a trial renewal reminder and auto-deducts the trial subscription for the registered company
-    Then the Super-Admin Console should display "Charged AED 75" for the registered company
+    Then the Super-Admin Console should display "Charged AED 129" for the registered company
     When the administrator opens the customer books for the registered company from the Super-Admin Console
     And the user navigates to the "Expenses" view
     Then the Expense History table should list payee "DEWA Utility" with VAT "20.00" and total "420.00"

@@ -28,7 +28,9 @@ services:
       - AGY_MODEL=${AGY_MODEL:-Gemini 4 Argon (High)}
     volumes:
       - ${HOST_DOCS_DIR:-.}/agy_service.py:/app/agy_service.py:ro
+      - ${HOST_DOCS_DIR:-.}/vendor_shims.py:/app/vendor_shims.py:ro
       - ${HOST_DOCS_DIR:-.}/invoice_validation.py:/app/invoice_validation.py:ro
+      - ${HOST_DOCS_DIR:-.}/state_auth_billing.py:/app/state_auth_billing.py:ro
       - ${HOST_DOCS_DIR:-.}/state_repository.py:/app/state_repository.py:ro
       - ${HOST_DOCS_DIR:-.}/einvoice_service.py:/app/einvoice_service.py:ro
       - ${HOST_DOCS_DIR:-.}/migrations:/app/migrations:ro

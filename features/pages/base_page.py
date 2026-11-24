@@ -3,18 +3,26 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import threading
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
 try:
-    from playwright.sync_api import Error as PlaywrightError, Page, TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import Page
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 except ModuleNotFoundError:  # pragma: no cover - fallback when running via Selenium adapter
     PlaywrightError = Exception  # type: ignore[misc,assignment]
     PlaywrightTimeoutError = TimeoutError  # type: ignore[misc,assignment]
     Page = Any  # type: ignore[misc,assignment]
 
-from features.config import DEFAULT_TIMEOUT_SECONDS, POLL_FREQUENCY_SECONDS, SCREENSHOTS_DIR
+from features.config import (
+    DEFAULT_TIMEOUT_SECONDS,
+    POLL_FREQUENCY_SECONDS,
+    SCREENSHOTS_DIR,
+)
 
 
 class BasePage:
@@ -117,12 +125,13 @@ class BasePage:
             """
             if (!window.LumenProfiles) return true;
             if (!window.LumenProfiles.isAuthenticated() || !window.LumenProfiles.isOwner()) return true;
+            if (window.LumenProfiles.getSessionToken && !window.LumenProfiles.getSessionToken()) return true;
             if (window.LumenProfiles.isImpersonating && window.LumenProfiles.isImpersonating()) return true;
             return false;
             """
         ):
             self.evaluate_script(
-                "window.LumenProfiles.signIn(window.LumenProfiles.OWNER_ACCOUNT);"
+                "return (async () => { if (window.LumenProfiles.signOut) window.LumenProfiles.signOut(); if (window.LumenAuth && window.LumenAuth.signInAdmin) { await window.LumenAuth.signInAdmin('admin@lumenconsultancy.net', 'LumenAdmin2026'); } else { window.LumenProfiles.signIn(window.LumenProfiles.OWNER_ACCOUNT); } })();"
             )
             self.page.goto(self.base_url, wait_until="load")
             self.wait_for_document_ready()
@@ -163,25 +172,39 @@ class BasePage:
         email: str,
         password: str,
         plan_id: str = "premium",
-        card_number: str = "4242 4242 4242 4242",
-        card_expiry: str = "12/28",
-        card_cvv: str = "123",
+        phone: str = "50 123 4567",
     ) -> None:
-        """Register a new company profile and account from the `/welcome` page."""
+        """Register a new company profile and account from `/welcome` using deferred-card reCAPTCHA signup."""
         self.click_id(f"btnChoose-{plan_id}")
         self.wait_until(lambda p: p.locator("#setupModal").is_visible())
-        self.fill_input("setupCompanyName", company_name)
-        self.fill_input("setupEmail", email)
-        self.fill_input("setupPassword", password)
-        self.fill_input("setupPasswordConfirm", password)
-        self.fill_input("setupCardName", company_name)
-        self.fill_input("setupCardNumber", card_number)
-        self.fill_input("setupCardExpiry", card_expiry)
-        self.fill_input("setupCardCvv", card_cvv)
+        for eid, val in (
+            ("setupCompanyName", company_name),
+            ("setupEmail", email),
+            ("setupPhone", phone),
+            ("setupPassword", password),
+            ("setupPasswordConfirm", password),
+        ):
+            self.fill_input(eid, val)
+        self.wait_until(lambda p: p.locator("#recaptchaStubBtn").is_visible())
+        self.click_id("recaptchaStubBtn")
+        self.wait_until(
+            lambda _p: self.evaluate_script(
+                "return Boolean(document.getElementById('setupHumanCheckBox')?.classList.contains('is-verified'));"
+            )
+        )
+        self.evaluate_script(
+            "const t = document.getElementById('setupAcceptTerms'); if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change', {bubbles: true})); }"
+        )
         self.click_id("btnSetupSubmit")
         self.wait_until(
-            lambda p: p.locator("#view-dashboard").is_visible()
-            and self._is_document_ready()
+            lambda p: p.locator(".app-layout").is_visible() and self._is_document_ready()
+        )
+        self.evaluate_script(
+            "if (window.LumenOnboarding && typeof window.LumenOnboarding.dismissWelcome === 'function') window.LumenOnboarding.dismissWelcome();"
+            "if (typeof window.switchView === 'function') window.switchView('view-dashboard', 'Dashboard');"
+        )
+        self.wait_until(
+            lambda p: p.locator("#view-dashboard").is_visible() and self._is_document_ready()
         )
         self.collect_severe_console_logs()
 
@@ -255,7 +278,7 @@ class BasePage:
     def get_welcome_hero_heading(self) -> str:
         """Return the main hero `<h1>` text on `/welcome`."""
         return self.wait_until(
-            lambda p: p.locator("main .hero h1").inner_text().strip()
+            lambda p: p.locator("main h1").inner_text().strip()
         )
 
     def get_welcome_pricing_plans(self) -> list[dict[str, str]]:
@@ -432,7 +455,7 @@ class BasePage:
     def collect_severe_console_logs(self) -> list[dict[str, Any]]:
         """Return and drain any SEVERE browser console error logs recorded by Playwright listeners."""
         severe_logs = list(getattr(self.page, "_severe_logs", []))
-        setattr(self.page, "_severe_logs", [])
+        self.page._severe_logs = []
         return severe_logs
 
     def check_dom_integrity(self) -> dict[str, Any]:
@@ -473,74 +496,43 @@ class BasePage:
         if not created_resources:
             return
         self.dismiss_any_alert()
-        self.evaluate_script(
-            "if (window.LumenProfiles && typeof window.LumenProfiles.flushSync === 'function') return window.LumenProfiles.flushSync();"
-        )
+        self.evaluate_script("if (window.LumenProfiles?.flushSync) return window.LumenProfiles.flushSync();")
         items = [*created_resources, ("audit_snapshot", str(self._audit_snapshot))] if self._audit_snapshot is not None else created_resources
-        payload = json.dumps(items)
         self.evaluate_script(
             """
             const resources = JSON.parse(arguments[0]);
-            const removeFromKey = (storageKey, predicate) => {
-                const raw = localStorage.getItem(storageKey);
-                if (!raw) return;
-                try {
-                    const arr = JSON.parse(raw);
-                    if (Array.isArray(arr)) localStorage.setItem(storageKey, JSON.stringify(arr.filter(item => !predicate(item))));
-                } catch (e) {}
+            const removeFromKey = (k, pred) => { try { const a = JSON.parse(localStorage.getItem(k) || 'null'); if (Array.isArray(a)) localStorage.setItem(k, JSON.stringify(a.filter(x => !pred(x)))); } catch (_) {} };
+            const arrayKeys = {
+                customer: ['bookkeeping_customers', (c, id) => c.name === id],
+                supplier: ['bookkeeping_suppliers', (s, id) => s.name === id],
+                employee: ['bookkeeping_employees', (e, id) => e.name === id],
+                cheque: ['bookkeeping_cheques', (c, id) => c.chequeNumber === id],
+                ledger: ['bookkeeping_history_v2', (h, id) => h.invoiceNum === id || h.entityName === id || h.description === id || (h.description && h.description.includes(id))],
+                asset: ['bookkeeping_assets', (a, id) => a.description === id],
+                accrual: ['bookkeeping_accruals', (a, id) => a.description === id],
+                bank_rule: ['bookkeeping_bank_rules', (r, id) => r.name === id],
+                bank_statement: ['bookkeeping_bank_statements', (s, id) => s.accountNumber === id || s.bankName === id],
+                quote: ['bookkeeping_quotes', (q, id) => q.quoteNum === id],
+                po: ['bookkeeping_pos', (p, id) => p.poNum === id],
+                recurring: ['bookkeeping_recurring_v2', (r, id) => r.name === id],
+                currency: ['bookkeeping_currencies', (c, id) => c.code === id],
+                expense: ['bookkeeping_history_v2', (h, id) => h.expenseId === id || h.entityName === id],
             };
-
-            for (const [kind, identifier] of resources) {
-                if (kind === 'customer') removeFromKey('bookkeeping_customers', c => c.name === identifier);
-                else if (kind === 'supplier') removeFromKey('bookkeeping_suppliers', s => s.name === identifier);
-                else if (kind === 'inventory') {
-                    removeFromKey('bookkeeping_inventory', i => i.name === identifier);
-                    removeFromKey('bookkeeping_stock_ledger', l => l.productName === identifier);
-                } else if (kind === 'employees_snapshot') localStorage.setItem('bookkeeping_employees', (identifier && identifier.trim().startsWith('[')) ? identifier : '[]');
-                else if (kind === 'audit_snapshot') localStorage.setItem('bookkeeping_audit_log', (identifier && identifier.trim().startsWith('[')) ? identifier : '[]');
-                else if (kind === 'employee') removeFromKey('bookkeeping_employees', e => e.name === identifier);
-                else if (kind === 'cheque') removeFromKey('bookkeeping_cheques', c => c.chequeNumber === identifier);
-                else if (kind === 'coa') {
-                    removeFromKey('bookkeeping_coa', a => a.code === identifier);
-                    removeFromKey('bookkeeping_custom_accounts', a => a.code === identifier);
-                } else if (kind === 'ledger') {
-                    removeFromKey('bookkeeping_history_v2', h =>
-                        h.invoiceNum === identifier || h.entityName === identifier ||
-                        h.description === identifier || (h.description && h.description.includes(identifier))
-                    );
-                } else if (kind === 'asset') removeFromKey('bookkeeping_assets', a => a.description === identifier);
-                else if (kind === 'accrual') removeFromKey('bookkeeping_accruals', a => a.description === identifier);
-                else if (kind === 'bank_rule') removeFromKey('bookkeeping_bank_rules', r => r.name === identifier);
-                else if (kind === 'bank_statement') removeFromKey('bookkeeping_bank_statements', s => s.accountNumber === identifier || s.bankName === identifier);
-                else if (kind === 'quote') removeFromKey('bookkeeping_quotes', q => q.quoteNum === identifier);
-                else if (kind === 'po') removeFromKey('bookkeeping_pos', p => p.poNum === identifier);
-                else if (kind === 'recurring') removeFromKey('bookkeeping_recurring_v2', r => r.name === identifier);
-                else if (kind === 'currency') removeFromKey('bookkeeping_currencies', c => c.code === identifier);
-                else if (kind === 'payroll') localStorage.removeItem('payroll_' + identifier);
+            for (const [kind, id] of resources) {
+                if (kind in arrayKeys) removeFromKey(arrayKeys[kind][0], x => arrayKeys[kind][1](x, id));
+                else if (kind === 'inventory') { removeFromKey('bookkeeping_inventory', i => i.name === id); removeFromKey('bookkeeping_stock_ledger', l => l.productName === id); }
+                else if (kind === 'coa') { removeFromKey('bookkeeping_coa', a => a.code === id); removeFromKey('bookkeeping_custom_accounts', a => a.code === id); }
+                else if (kind === 'employees_snapshot') localStorage.setItem('bookkeeping_employees', (id && id.trim().startsWith('[')) ? id : '[]');
+                else if (kind === 'audit_snapshot') localStorage.setItem('bookkeeping_audit_log', (id && id.trim().startsWith('[')) ? id : '[]');
+                else if (kind === 'payroll') localStorage.removeItem('payroll_' + id);
                 else if (kind === 'closed_date') localStorage.removeItem('bookkeeping_closed_date');
-                else if (kind === 'budget') {
-                    const rawBudgets = localStorage.getItem('bookkeeping_budgets');
-                    if (rawBudgets) {
-                        try {
-                            const budgetsObj = JSON.parse(rawBudgets);
-                            if (budgetsObj && typeof budgetsObj === 'object') {
-                                delete budgetsObj[identifier];
-                                localStorage.setItem('bookkeeping_budgets', JSON.stringify(budgetsObj));
-                            }
-                        } catch (e) {}
-                    }
-                } else if (kind === 'settings') {
-                    const fallback = JSON.stringify({ companyName: 'Lumen Management Consultancy', companyAddress: 'Business Bay, Dubai, UAE', companyPhone: '+971 56 471 8587', companyType: 'Mainland', smallBusinessRelief: false });
-                    localStorage.setItem('bookkeeping_settings', (identifier && identifier.trim().startsWith('{')) ? identifier : fallback);
-                    localStorage.removeItem('erp_settings');
-                } else if (kind === 'bank_feeds') localStorage.removeItem('bookkeeping_bank_feeds');
-                else if (kind === 'lang') {
-                    if (window.LumenI18n) window.LumenI18n.setLang(identifier || 'en');
-                    else localStorage.setItem('lumen_lang', identifier || 'en');
-                } else if (kind === 'expense') removeFromKey('bookkeeping_history_v2', h => h.expenseId === identifier || h.entityName === identifier);
+                else if (kind === 'budget') { try { const b = JSON.parse(localStorage.getItem('bookkeeping_budgets') || '{}'); if (b && typeof b === 'object') { delete b[id]; localStorage.setItem('bookkeeping_budgets', JSON.stringify(b)); } } catch (_) {} }
+                else if (kind === 'settings') { localStorage.setItem('bookkeeping_settings', (id && id.trim().startsWith('{')) ? id : JSON.stringify({ companyName: 'Lumen Management Consultancy', companyAddress: 'Business Bay, Dubai, UAE', companyPhone: '+971 56 471 8587', companyType: 'Mainland', smallBusinessRelief: false })); localStorage.removeItem('erp_settings'); }
+                else if (kind === 'bank_feeds') localStorage.removeItem('bookkeeping_bank_feeds');
+                else if (kind === 'lang') { if (window.LumenI18n) window.LumenI18n.setLang(id || 'en'); else localStorage.setItem('lumen_lang', id || 'en'); }
                 else if (kind === 'fx_backup') localStorage.removeItem('bookkeeping_history_fx_backup');
             }
-            if (window.LumenProfiles && typeof window.LumenProfiles.flushSync === 'function') return window.LumenProfiles.flushSync();
+            if (window.LumenProfiles?.flushSync) return window.LumenProfiles.flushSync();
             """,
-            payload,
+            json.dumps(items),
         )

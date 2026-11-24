@@ -31,7 +31,9 @@ services:
       - AGY_ALLOWED_ORIGINS=${AGY_ALLOWED_ORIGINS:-https://bookeeping.lumenconsultancy.net,https://bookkeeping.lumenconsultancy.net,https://lumen-bookkeeping.pages.dev,http://localhost:9091,http://127.0.0.1:9091,http://bookkeeping-web}
     volumes:
       - ./agy_service.py:/app/agy_service.py:ro
+      - ./vendor_shims.py:/app/vendor_shims.py:ro
       - ./invoice_validation.py:/app/invoice_validation.py:ro
+      - ./state_auth_billing.py:/app/state_auth_billing.py:ro
       - ./state_repository.py:/app/state_repository.py:ro
       - ./einvoice_service.py:/app/einvoice_service.py:ro
       - ./migrations:/app/migrations:ro

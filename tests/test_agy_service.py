@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from http.server import ThreadingHTTPServer
 import json
 import os
-from pathlib import Path
 import subprocess
 import tempfile
 import threading
 import unittest
-from unittest.mock import MagicMock, patch
 import urllib.error
 import urllib.request
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import agy_service
 from features import config as e2e_config
@@ -85,7 +85,7 @@ class AgyServiceUnitTests(unittest.TestCase):
             f'--{boundary}\r\nContent-Disposition: form-data; name="question"\r\n\r\nBANK STATEMENT TEXT\r\n'
             f'--{boundary}\r\nContent-Disposition: form-data; name="files"; filename="statement.pdf"\r\n'
             f"Content-Type: application/pdf\r\n\r\n%PDF-1.7 fake bank statement\r\n--{boundary}--\r\n"
-        ).encode("utf-8")
+        ).encode()
         question, uploads = agy_service._parse_multipart_form_data(content_type, body)
         self.assertEqual((question, len(uploads), uploads[0]["name"], uploads[0]["mime"]), ("BANK STATEMENT TEXT", 1, "statement.pdf", "application/pdf"))
 
@@ -272,6 +272,7 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
         mock_run.return_value = subprocess.CompletedProcess(
             args=["agy"], returncode=0, stdout='{"conversation_id":"conv-sec","status":"SUCCESS","response":"```json\\n{}\\n```"}\n', stderr=""
         )
+        owner_tok = agy_service.get_state_repo().issue_session_token("owner")
         with patch.object(agy_service, "AGY_API_SECRET", "prod-secret-xyz"):
             req_missing = urllib.request.Request(
                 f"{self.base_url}/api/v1/prediction/test",
@@ -290,6 +291,8 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
                     "X-Lumen-Client": "lumen-bookkeeping-web",
                     "Origin": "https://lumen-bookkeeping.pages.dev",
                     "X-Agy-Proxy-Secret": "prod-secret-xyz",
+                    "X-Lumen-Account": "owner",
+                    "X-Lumen-Session": owner_tok,
                 },
                 method="POST",
             )
@@ -297,10 +300,11 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
                 self.assertEqual((resp.status, resp.headers.get("Access-Control-Allow-Origin")), (200, "https://lumen-bookkeeping.pages.dev"))
 
     def test_invalid_json_returns_400_structured_error_envelope(self) -> None:
+        owner_tok = agy_service.get_state_repo().issue_session_token("owner")
         req = urllib.request.Request(
             f"{self.base_url}/api/v1/prediction/test",
             data=b"{bad json",
-            headers={"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091"},
+            headers={"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091", "X-Lumen-Account": "owner", "X-Lumen-Session": owner_tok},
             method="POST",
         )
         with self.assertRaises(urllib.error.HTTPError) as ctx:
@@ -311,10 +315,11 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
         self.assertIn("text", body)
 
     def test_non_string_question_returns_400(self) -> None:
+        owner_tok = agy_service.get_state_repo().issue_session_token("owner")
         req = urllib.request.Request(
             f"{self.base_url}/api/v1/prediction/test",
             data=b'{"question": true}',
-            headers={"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091"},
+            headers={"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091", "X-Lumen-Account": "owner", "X-Lumen-Session": owner_tok},
             method="POST",
         )
         with self.assertRaises(urllib.error.HTTPError) as ctx:
@@ -324,10 +329,11 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
     @patch("agy_service.subprocess.run")
     def test_subprocess_timeout_returns_504_without_leaking_internals(self, mock_run: MagicMock) -> None:
         mock_run.side_effect = subprocess.TimeoutExpired(cmd=["agy", "/tmp/secret_req"], timeout=240)
+        owner_tok = agy_service.get_state_repo().issue_session_token("owner")
         req = urllib.request.Request(
             f"{self.base_url}/api/v1/prediction/test",
             data=b'{"question": "Extract"}',
-            headers={"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091"},
+            headers={"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091", "X-Lumen-Account": "owner", "X-Lumen-Session": owner_tok},
             method="POST",
         )
         with self.assertRaises(urllib.error.HTTPError) as ctx:
@@ -357,11 +363,12 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
             urllib.request.urlopen(req_post_404, timeout=5)
         self.assertEqual(post_404.exception.code, 404)
         boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-        mp_body = f'--{boundary}\r\nContent-Disposition: form-data; name="question"\r\n\r\nHello conversational prompt\r\n--{boundary}--\r\n'.encode("utf-8")
+        mp_body = f'--{boundary}\r\nContent-Disposition: form-data; name="question"\r\n\r\nHello conversational prompt\r\n--{boundary}--\r\n'.encode()
+        owner_tok = agy_service.get_state_repo().issue_session_token("owner")
         req_mp = urllib.request.Request(
             f"{self.base_url}/api/v1/prediction/test",
             data=mp_body,
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091"},
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091", "X-Lumen-Account": "owner", "X-Lumen-Session": owner_tok},
             method="POST",
         )
         with urllib.request.urlopen(req_mp, timeout=5) as resp_mp:
@@ -370,7 +377,7 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
         req_500 = urllib.request.Request(
             f"{self.base_url}/api/v1/prediction/test",
             data=b'{"question": "extract json"}',
-            headers={"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091"},
+            headers={"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091", "X-Lumen-Account": "owner", "X-Lumen-Session": owner_tok},
             method="POST",
         )
         with self.assertRaises(urllib.error.HTTPError) as ctx_500:
@@ -389,7 +396,7 @@ class AgyHttpEndpointIntegrationTests(unittest.TestCase):
             repo = agy_service.LumenStateRepository(db_path)
             with patch.object(agy_service, "STATE_REPO", repo):
                 base_headers = {"Content-Type": "application/json", "X-Lumen-Client": "lumen-bookkeeping-web", "Origin": "http://localhost:9091"}
-                owner_headers = {**base_headers, "X-Lumen-Account": "owner"}
+                owner_headers = {**base_headers, "X-Lumen-Account": "owner", "X-Lumen-Session": repo.issue_session_token("owner")}
 
                 unauth_post = urllib.request.Request(
                     f"{self.base_url}/api/v1/state",

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from datetime import datetime, timezone
 import json
 import re
 import secrets
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from state_auth_billing import CallerContext
     from state_repository import LumenStateRepository
 
 ASP_PROVIDERS: dict[str, dict[str, str]] = {
@@ -63,7 +64,7 @@ def parse_inbound_peppol_xml(xml_string: object) -> dict[str, object]:
 
     header_part = re.split(r"<cac:AccountingSupplierParty", xml, maxsplit=1, flags=re.IGNORECASE)[0]
     invoice_num = _extract_tag(header_part, "ID") or _extract_tag(xml, "ID") or f"PEPPOL-{secrets.token_hex(3).upper()}"
-    issue_date = _extract_tag(header_part, "IssueDate") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    issue_date = _extract_tag(header_part, "IssueDate") or datetime.now(UTC).strftime("%Y-%m-%d")
     due_date = _extract_tag(header_part, "DueDate")
     doc_type = _extract_tag(header_part, "InvoiceTypeCode") or _extract_tag(header_part, "CreditNoteTypeCode") or "380"
     currency = _extract_tag(header_part, "DocumentCurrencyCode") or "AED"
@@ -120,7 +121,7 @@ def parse_inbound_peppol_xml(xml_string: object) -> dict[str, object]:
     if _num(total) <= 0 and _num(subtotal) <= 0 and not has_positive_line:
         return {"ok": False, "error": "Invalid UBL 2.1 XML: invoice has no positive monetary totals or line items."}
 
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     trn_verified = len(trn) == 15
     entry: dict[str, object] = {
         "id": f"peppol-in-{secrets.token_hex(6)}",
@@ -153,10 +154,30 @@ def parse_inbound_peppol_xml(xml_string: object) -> dict[str, object]:
     return {"ok": True, "entry": entry}
 
 
-def submit_einvoice(repo: LumenStateRepository, payload: Mapping[str, object], caller_account: str | None = "owner") -> dict[str, object]:
+def _authorize_einvoice_profile(
+    repo: LumenStateRepository, profile_id: str, caller_account: str | None, caller_context: CallerContext | None,
+) -> CallerContext:
+    """Verify that the caller is permitted to mutate e-invoice state for `profile_id`."""
+    ctx = caller_context or repo._context_for_account(caller_account)
+    if ctx.role in ("viewer", "unauthenticated"):
+        raise PermissionError("Forbidden: insufficient role for e-invoice mutation.")
+    if ctx.account_id == "owner" and ctx.role == "owner":
+        return ctx
+    _, profiles = repo._parse_accounts_and_profiles(repo.get_all_state())
+    owned_ids, other_ids = repo._profile_ownership_sets(profiles, ctx.account_id, ctx.profile_ids)
+    if profile_id not in owned_ids or profile_id in other_ids:
+        raise PermissionError("Access denied to unassigned company profile.")
+    return ctx
+
+
+def submit_einvoice(
+    repo: LumenStateRepository, payload: Mapping[str, object], caller_account: str | None = "owner", *, caller_context: CallerContext | None = None,
+) -> dict[str, object]:
     """Validate and clear an outbound PINT-AE UBL 2.1 E-Invoice (380) or Credit Note (381) via the selected ASP."""
     if not isinstance(payload, Mapping):
         return {"ok": False, "status_code": 400, "error": "Invalid e-invoice payload."}
+    profile_id = str(payload.get("profileId") or "default").strip() or "default"
+    ctx = _authorize_einvoice_profile(repo, profile_id, caller_account, caller_context)
     xml = str(payload.get("xml") or "").strip()
     if not xml or "urn:peppol:pint:billing-1@ae-1" not in xml:
         return {"ok": False, "status_code": 400, "error": "Missing or invalid UAE PINT-AE UBL 2.1 XML payload."}
@@ -164,11 +185,10 @@ def submit_einvoice(repo: LumenStateRepository, payload: Mapping[str, object], c
     provider_key = str(payload.get("provider") or "marmin").strip().lower()
     provider = ASP_PROVIDERS.get(provider_key, ASP_PROVIDERS["marmin"])
     env_mode = "production" if str(payload.get("environment") or "sandbox").strip().lower() == "production" else "sandbox"
-    profile_id = str(payload.get("profileId") or "default").strip() or "default"
     invoice_id = str(payload.get("invoiceId") or "").strip()
     invoice_num = str(payload.get("invoiceNum") or "").strip()
 
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     uuid_str = f"peppol-ae-{provider['id']}-{secrets.token_hex(6)}"
     status = "FTA_CLEARED" if env_mode == "production" else "SANDBOX_CLEARED"
 
@@ -194,7 +214,7 @@ def submit_einvoice(repo: LumenStateRepository, payload: Mapping[str, object], c
                 item["eInvoiceExportedAt"] = now_iso
                 updated = True
         if updated:
-            repo.mutate_scoped_state(caller_account or "owner", {hist_key: json.dumps(hist)})
+            repo.mutate_scoped_state(ctx.account_id, {hist_key: json.dumps(hist)}, caller_context=ctx)
 
     return {
         "ok": True,
@@ -231,22 +251,25 @@ def handle_einvoice_webhook(repo: LumenStateRepository, payload: Mapping[str, ob
                 or (einvoice_uuid and str(item.get("einvoiceUuid") or "") == einvoice_uuid)
             ):
                 item["einvoiceStatus"] = new_status
-                item["einvoiceWebhookUpdatedAt"] = datetime.now(timezone.utc).isoformat()
+                item["einvoiceWebhookUpdatedAt"] = datetime.now(UTC).isoformat()
                 matched = True
         if matched:
             repo.mutate_state({hist_key: json.dumps(hist)})
     return {"ok": True, "matched": matched, "einvoiceStatus": new_status}
 
 
-def receive_inbound_einvoice(repo: LumenStateRepository, payload: Mapping[str, object], caller_account: str | None = "owner") -> dict[str, object]:
+def receive_inbound_einvoice(
+    repo: LumenStateRepository, payload: Mapping[str, object], caller_account: str | None = "owner", *, caller_context: CallerContext | None = None,
+) -> dict[str, object]:
     """Parse an inbound Peppol PINT-AE UBL 2.1 supplier invoice XML and save it into the tenant's ledger."""
     if not isinstance(payload, Mapping):
         return {"ok": False, "status_code": 400, "error": "Invalid inbound e-invoice payload."}
+    profile_id = str(payload.get("profileId") or "default").strip() or "default"
+    ctx = _authorize_einvoice_profile(repo, profile_id, caller_account, caller_context)
     parsed = parse_inbound_peppol_xml(payload.get("xml"))
     if not parsed.get("ok"):
         return {"ok": False, "status_code": 400, "error": parsed.get("error", "Invalid XML")}
     entry = dict(parsed["entry"])  # type: ignore[arg-type]
-    profile_id = str(payload.get("profileId") or "default").strip() or "default"
     hist_key = f"profile:{profile_id}::bookkeeping_history_v2"
     sup_key = f"profile:{profile_id}::bookkeeping_suppliers"
     state = repo.get_all_state()
@@ -273,5 +296,5 @@ def receive_inbound_einvoice(repo: LumenStateRepository, payload: Mapping[str, o
             "address": entry.get("address"),
             "emirate": entry.get("emirate"),
         })
-    repo.mutate_scoped_state(caller_account or "owner", {hist_key: json.dumps(hist), sup_key: json.dumps(sups)})
+    repo.mutate_scoped_state(ctx.account_id, {hist_key: json.dumps(hist), sup_key: json.dumps(sups)}, caller_context=ctx)
     return {"ok": True, "entry": entry}

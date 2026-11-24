@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from behave import then, when
 
-
 # --- Direct Expenses (`#view-expense`) ---
 
 
@@ -188,9 +187,18 @@ def step_verify_plan_upgrade_request_badge(context, expected_badge: str) -> None
     assert expected_badge in card_text, (
         f"Expected '{expected_badge}' in Subscription Plan card, got:\n{card_text}"
     )
-    assert "4242" in card_text and "Cancel Auto-Renewal" in card_text, (
-        f"Expected 1-month trial card on file (•••• 4242) and Cancel Auto-Renewal button in Subscription Plan card, got:\n{card_text}"
+
+
+@when('the customer saves payment card "{card_number}" in Settings')
+def step_save_payment_card_in_settings(context, card_number: str) -> None:
+    card_text = context.expenses_admin_page.save_payment_card_in_settings(
+        card_holder=getattr(context, "registered_company_name", "Lumen Client"),
+        card_number=card_number,
     )
+    assert "4242" in card_text and "Cancel Auto-Renewal" in card_text, (
+        f"Expected saved 15-day trial card (•••• 4242) and Cancel Auto-Renewal button in Subscription Plan card, got:\n{card_text}"
+    )
+    context.plan_card_text = card_text
 
 
 @when("the customer cancels and then resumes trial auto-renewal in Settings")

@@ -3,21 +3,23 @@
 from __future__ import annotations
 
 import base64
-from http.server import ThreadingHTTPServer
 import json
 import os
 import tempfile
 import threading
 import unittest
+from http.server import ThreadingHTTPServer
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import agy_service
-from features.support_server import BookkeepingRequestHandler
 from state_repository import LumenStateRepository
 from tests.browser_shim import sync_playwright
-from tests.test_banking_and_menu_new_tab import _open_authenticated_app, _start_test_server
+from tests.test_banking_and_menu_new_tab import (
+    _open_authenticated_app,
+    _start_test_server,
+)
 
 
 class TestFxConversionAndPlanAiGating(unittest.TestCase):
@@ -33,6 +35,7 @@ class TestFxConversionAndPlanAiGating(unittest.TestCase):
                             "acc-basic": {"id": "acc-basic", "email": "basic@co.ae", "plan": "basic", "status": "active", "aiAddon": False},
                             "acc-addon": {"id": "acc-addon", "email": "addon@co.ae", "plan": "basic", "status": "active", "aiAddon": True},
                             "acc-adv": {"id": "acc-adv", "email": "adv@co.ae", "plan": "advance", "status": "active", "aiAddon": False},
+                            "acc-managed": {"id": "acc-managed", "email": "managed@co.ae", "plan": "managed", "status": "active", "aiAddon": False},
                         }
                     )
                 }
@@ -52,6 +55,7 @@ class TestFxConversionAndPlanAiGating(unittest.TestCase):
                             "Content-Type": "application/json",
                             "X-Lumen-Client": "lumen-bookkeeping-web",
                             "X-Lumen-Account": "acc-basic",
+                            "X-Lumen-Session": repo.issue_session_token("acc-basic"),
                         },
                         method="POST",
                     )
@@ -70,6 +74,7 @@ class TestFxConversionAndPlanAiGating(unittest.TestCase):
                             "Content-Type": "application/json",
                             "X-Lumen-Client": "lumen-bookkeeping-web",
                             "X-Lumen-Account": "acc-addon",
+                            "X-Lumen-Session": repo.issue_session_token("acc-addon"),
                         },
                         method="POST",
                     )
@@ -85,12 +90,29 @@ class TestFxConversionAndPlanAiGating(unittest.TestCase):
                             "Content-Type": "application/json",
                             "X-Lumen-Client": "lumen-bookkeeping-web",
                             "X-Lumen-Account": "acc-adv",
+                            "X-Lumen-Session": repo.issue_session_token("acc-adv"),
                         },
                         method="POST",
                     )
                     with urlopen(req_adv, timeout=5) as resp:
                         self.assertEqual(resp.status, 200)
                     self.assertEqual(mock_run.call_count, 2)
+
+                    # 4. Managed Books plan account is permitted
+                    req_managed = Request(
+                        f"http://127.0.0.1:{port}/api/v1/prediction/test",
+                        data=json.dumps({"question": "Summarize my books", "uploads": []}).encode("utf-8"),
+                        headers={
+                            "Content-Type": "application/json",
+                            "X-Lumen-Client": "lumen-bookkeeping-web",
+                            "X-Lumen-Account": "acc-managed",
+                            "X-Lumen-Session": repo.issue_session_token("acc-managed"),
+                        },
+                        method="POST",
+                    )
+                    with urlopen(req_managed, timeout=5) as resp:
+                        self.assertEqual(resp.status, 200)
+                    self.assertEqual(mock_run.call_count, 3)
             finally:
                 server.shutdown()
                 server.server_close()
@@ -328,24 +350,24 @@ class TestFxConversionAndPlanAiGating(unittest.TestCase):
                 page.on("pageerror", lambda e: page_errors.append(str(e)))
                 page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
-                # 1. Welcome page shows only the 6 core manual items in Basic and Lumy AI Books Assistant in Advance
+                # 1. Welcome page shows 4 pricing tiers cleanly with Basic manual items and Lumy AI on Advance
                 page.goto(f"http://127.0.0.1:{port}/welcome.html", wait_until="domcontentloaded")
-                page.wait_for_function('() => document.querySelectorAll("#plans article.plan").length === 3')
+                page.wait_for_function('() => document.querySelectorAll("#plans article.plan").length === 4')
                 basic_card = page.locator("#plans article.plan:has(#btnChoose-basic)")
                 basic_items = [t.strip() for t in basic_card.locator(".plan-features li").all_inner_texts()]
                 self.assertEqual(
                     basic_items,
                     [
-                        "1 company profile",
-                        "Income & expense tracking",
-                        "VAT-compliant tax invoices",
-                        "Customer & supplier contacts",
+                        "UAE E-Invoicing (FTA-compliant, up to 50 invoices monthly) FREE",
+                        "Full English & Arabic app & printable UAE VAT invoices",
+                        "Send invoices & payment links in 1 tap via WhatsApp",
+                        "Income & expense tracking, customers & suppliers",
                         "Manual bank statement entry",
-                        "Profit & loss and balance sheet",
+                        "Profit & Loss and Balance Sheet reports",
                     ],
                 )
                 advance_card = page.locator("#plans article.plan:has(#btnChoose-advance)")
-                self.assertIn("Lumy AI · Dashboard Books Assistant", advance_card.inner_text())
+                self.assertIn("Lumy AI", advance_card.inner_text())
                 self.assertEqual(page.locator("#addonServices").count(), 0)
                 if shot_dir:
                     page.screenshot(path=os.path.join(shot_dir, "welcome_plans_addon.png"), full_page=True)

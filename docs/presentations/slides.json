@@ -4,14 +4,14 @@
   "slides": [
     {
       "slug": "welcome_onboarding_bilingual",
-      "title": "Bilingual (EN / AR RTL) Cloud Onboarding & 1-Month Free Trial Tiers",
-      "subtitle": "Purpose-built UAE SME accounting platform with Basic (AED 50), Advance (AED 75), and Premium (AED 100) plans",
+      "title": "Bilingual (EN / AR RTL) Cloud Onboarding & 15-Day Free Trial Tiers",
+      "subtitle": "Purpose-built UAE SME accounting platform with Basic (AED 69), Advance (AED 129), Pro (AED 199), and Managed Books (From AED 1,450)",
       "before_title": "English LTR Welcome Portal (/welcome)",
       "after_title": "Arabic RTL Welcome Portal (dir='rtl')",
       "before_image": "screenshots/welcome_english_ltr.png",
       "after_image": "screenshots/welcome_arabic_rtl.png",
       "before_bullets": [
-        "Transparent UAE pricing tiers (AED 50 / 75 / 100 per month or 10x annual) with 1 Month Free Trial on every plan.",
+        "Transparent UAE pricing tiers (AED 69 / 129 / 199 + Managed Books From AED 1,450/mo) with 15 Days Free trial.",
         "Built-in UAE PDPL Privacy Policy, Terms of Service, and anytime Cancellation legal modals."
       ],
       "after_bullets": [
@@ -22,14 +22,14 @@
     },
     {
       "slug": "trial_billing_auth_security",
-      "title": "1-Month Trial Card Capture, 3x Lockout, Email Reset & Admin Console",
-      "subtitle": "Tokenized card onboarding, CSPRNG 6-digit password reset, and Super-Admin subscription lifecycle controls",
-      "before_title": "1-Month Free Trial Signup & Card Capture (#setupModal)",
+      "title": "Deferred Trial Card Capture, 3x Lockout, Email Reset & Admin Console",
+      "subtitle": "No-card 15-day signup, reCAPTCHA v2 verification, CSPRNG 6-digit password reset, and Super-Admin lifecycle controls",
+      "before_title": "15-Day Free Trial Signup & Onboarding (#setupModal)",
       "after_title": "3x Password Lockout & Email Reset (#signInModal)",
       "before_image": "screenshots/after_03_welcome_register_modal.png",
       "after_image": "screenshots/after_04_welcome_signin_modal.png",
       "before_bullets": [
-        "Captures cardholder name, card brand, last 4 digits, and expiry token while never storing raw PAN or CVV.",
+        "#setupModal requires zero credit card upfront; PCI-safe cardholder, brand, last 4 digits, and expiry tokenization occur later in Settings or post-trial (#trialCardRequiredModal).",
         "Locks accounts after 3 failed sign-in attempts and dispatches a CSPRNG 6-digit email reset code."
       ],
       "after_bullets": [
@@ -120,8 +120,8 @@
       "after_diagram": {
         "caption": "Continuous Verification & Pre-Merge Quality Gate",
         "nodes": [
-          { "id": "unit", "label": "117 Unit & Security Tests", "sub": "Node VM + Python SQLite/HTTP", "x": 0.24, "y": 0.3, "status": "ok", "badge": "100% PASS" },
-          { "id": "pw", "label": "Playwright Chromium E2E", "sub": "7 Features • 42 Scenarios", "x": 0.76, "y": 0.3, "status": "ok", "badge": "372 STEPS" },
+          { "id": "unit", "label": "227 Unit & Security Tests", "sub": "Node Vitest + Python SQLite/HTTP", "x": 0.24, "y": 0.3, "status": "ok", "badge": "100% PASS" },
+          { "id": "pw", "label": "Playwright Chromium E2E", "sub": "8 Features • 47 Scenarios", "x": 0.76, "y": 0.3, "status": "ok", "badge": "418 STEPS" },
           { "id": "prod", "label": "Cloudflare Pages + AWS EC2", "sub": "D1 + R2 + Zero Trust Tunnel", "x": 0.5, "y": 0.74, "status": "ok", "badge": "READY" }
         ],
         "edges": [
@@ -135,7 +135,7 @@
       ],
       "after_bullets": [
         "Migrated browser automation and DOM test harnesses from Selenium WebDriver to native Playwright Chromium locators.",
-        "Verified by 117 unit tests and 42 end-to-end BDD scenarios (372 steps) with zero console or page errors."
+        "Verified by 227 unit & security tests and 47 end-to-end BDD scenarios (418 steps) across 8 features with zero console or page errors."
       ],
       "footer": "Delivered in feat/pdc-reminder-and-sidebar-icons • bookeeping_docs (a914efe)"
     }

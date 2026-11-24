@@ -1,18 +1,12 @@
-#!/usr/bin/env python3
 """HTTP prediction service wrapping the `agy` CLI the same way Argiei worker instances execute it."""
 
 from __future__ import annotations
 
 import base64
 import binascii
-from collections.abc import Mapping
-from email.parser import BytesParser
-from email.policy import default as default_email_policy
 import hmac
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import signal
@@ -20,25 +14,51 @@ import subprocess
 import sys
 import tempfile
 import threading
-from urllib.parse import parse_qs, urlparse
 import uuid
+from collections.abc import Mapping
+from email.parser import BytesParser
+from email.policy import default as default_email_policy
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from invoice_validation import (
-    _INVALID_DOC_TYPES,
-    _PLACEHOLDER_STRINGS,
     build_extraction_prompt as _build_extraction_prompt,
-    clean_text_field as _clean_text_field,
-    extract_json_block as _extract_json_block,
-    parse_money as _parse_money,
+)
+from invoice_validation import (
     validate_ai_document_response as _run_validate_ai_document_response,
+)
+from invoice_validation import (
     validate_uploaded_file_bytes as _run_validate_uploaded_file_bytes,
 )
 from state_repository import (
-    ADMIN_EMAIL, DEFAULT_ADMIN_HASH, DEFAULT_ADMIN_SALT, LOCAL_ONLY_KEYS, LumenStateRepository,
-    compute_password_hash as _compute_password_hash, is_excluded_state_key as _is_excluded_state_key,
-    resolve_default_state_db_path, safe_json as _safe_json,
-    strip_account_secrets as _strip_account_secrets, verify_password_hash as _verify_password_hash,
+    ADMIN_EMAIL,  # noqa: F401
+    DEFAULT_ADMIN_HASH,  # noqa: F401
+    DEFAULT_ADMIN_SALT,  # noqa: F401
+    LOCAL_ONLY_KEYS,  # noqa: F401
+    CallerContext,
+    LumenStateRepository,
+    resolve_default_state_db_path,
 )
+from state_repository import (
+    compute_password_hash as _compute_password_hash,  # noqa: F401
+)
+from state_repository import (
+    is_excluded_state_key as _is_excluded_state_key,  # noqa: F401
+)
+from state_repository import (
+    safe_json as _safe_json,  # noqa: F401
+)
+from state_repository import (
+    strip_account_secrets as _strip_account_secrets,  # noqa: F401
+)
+from state_repository import (
+    verify_password_hash as _verify_password_hash,  # noqa: F401
+)
+from state_repository import (
+    verify_recaptcha_token as _verify_recaptcha_token,
+)
+from vendor_shims import CHART_JS_SHIM, PDF_JS_SHIM
 
 HOST = os.environ.get("AGY_HOST", "0.0.0.0")
 PORT = int(os.environ.get("AGY_PORT", "3000"))
@@ -61,67 +81,6 @@ ALLOWED_ORIGINS = tuple(
     for origin in os.environ.get("AGY_ALLOWED_ORIGINS", ",".join(DEFAULT_ALLOWED_ORIGINS)).split(",")
     if origin.strip()
 )
-
-CHART_JS_SHIM = """(function(window) {
-    class Chart {
-        constructor(ctx, config) { this.ctx = ctx; this.config = config || {}; this._renderCanvasPreview(); }
-        _renderCanvasPreview() {
-            try {
-                const canvas = this.ctx && this.ctx.canvas ? this.ctx.canvas : this.ctx;
-                if (!canvas || !canvas.getContext) return;
-                const parent = canvas.parentElement;
-                const w = canvas.width = Math.max(480, (parent && parent.clientWidth ? parent.clientWidth - 48 : 680));
-                const h = canvas.height = Math.max(210, (parent && parent.clientHeight ? parent.clientHeight - 48 : 240));
-                const c = canvas.getContext('2d'), padL = 56, padR = 24, padT = 36, padB = 34, plotW = w - padL - padR, plotH = h - padT - padB;
-                c.clearRect(0, 0, w, h); c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h); c.strokeStyle = '#e4e7ec'; c.lineWidth = 1;
-                for (let g = 0; g <= 4; g++) { const y = padT + (plotH * g) / 4; c.beginPath(); c.moveTo(padL, y); c.lineTo(w - padR, y); c.stroke(); }
-                const labels = (this.config.data && this.config.data.labels) || [], datasets = (this.config.data && this.config.data.datasets) || [];
-                datasets.forEach((ds, dIdx) => {
-                    const lx = w - padR - (datasets.length - dIdx) * 125;
-                    c.fillStyle = ds.backgroundColor || (dIdx === 0 ? '#067647' : '#b42318'); c.fillRect(lx, 10, 10, 10);
-                    c.fillStyle = '#475467'; c.font = '500 11px Inter, sans-serif'; c.fillText(String(ds.label || (dIdx === 0 ? 'Cash In' : 'Cash Out')), lx + 15, 19);
-                });
-                const slotW = plotW / Math.max(labels.length, 1), barW = Math.min(28, Math.max(14, Math.floor(slotW / 3.2)));
-                labels.forEach((label, idx) => {
-                    const xCenter = padL + idx * slotW + slotW / 2;
-                    datasets.forEach((ds, dIdx) => {
-                        const val = Number((ds.data && ds.data[idx]) || 0), barH = val > 0 ? Math.min(plotH - 12, Math.max(14, Math.log10(val + 10) * 38)) : 6;
-                        const bx = xCenter + (dIdx - (datasets.length - 1) / 2) * (barW + 6) - barW / 2;
-                        c.fillStyle = ds.backgroundColor || (dIdx === 0 ? '#067647' : '#b42318'); c.fillRect(bx, padT + plotH - barH, barW, barH);
-                    });
-                    c.fillStyle = '#475467'; c.font = '500 11px Inter, sans-serif'; c.textAlign = 'center'; c.fillText(String(label), xCenter, h - 12);
-                });
-                c.textAlign = 'start';
-            } catch (e) {}
-        }
-        destroy() {}
-        update() { this._renderCanvasPreview(); }
-    }
-    window.Chart = Chart;
-})(window);"""
-
-PDF_JS_SHIM = """(function(window) {
-    const pdfjsLib = {
-        version: '3.11.174',
-        GlobalWorkerOptions: { workerSrc: '' },
-        getDocument: function() {
-            return { promise: Promise.resolve({ numPages: 1, getPage: function(pageNum) {
-                return Promise.resolve({
-                    getViewport: function(opts) { return { width: 600, height: 800, scale: (opts && opts.scale) || 1 }; },
-                    render: function(renderCtx) {
-                        try { if (renderCtx && renderCtx.canvasContext) {
-                            const ctx = renderCtx.canvasContext; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 600, 800);
-                            ctx.fillStyle = '#0f172a'; ctx.font = '16px sans-serif'; ctx.fillText('PDF Document Page ' + pageNum, 40, 60);
-                        } } catch (e) {}
-                        return { promise: Promise.resolve() };
-                    },
-                    getTextContent: function() { return Promise.resolve({ items: [] }); }
-                });
-            } }) };
-        }
-    };
-    window.pdfjsLib = pdfjsLib; window['pdfjs-dist/build/pdf'] = pdfjsLib;
-})(window);"""
 
 
 class PredictionServiceError(Exception):
@@ -154,6 +113,12 @@ class ForbiddenOriginPredictionError(PredictionServiceError):
     status_code = 403
     error_code = "forbidden_origin"
     public_message = "Forbidden: request origin is not authorized to access this service."
+
+
+class ForbiddenRoleError(PredictionServiceError):
+    status_code = 403
+    error_code = "forbidden"
+    public_message = "Forbidden: your role or profile permissions do not allow this action."
 
 
 class PayloadTooLargeError(PredictionServiceError):
@@ -197,17 +162,15 @@ def _sanitize_filename(name: str, index: int, mime: str) -> str:
 
 
 def _parse_multipart_form_data(content_type: str, body: bytes) -> tuple[str, list[dict]]:
-    raw_headers = f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8")
+    raw_headers = f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode()
     msg = BytesParser(policy=default_email_policy).parsebytes(raw_headers + body)
     if not msg.is_multipart():
         raise InvalidPredictionRequestError("Malformed multipart/form-data payload.")
-    question = ""
-    uploads: list[dict] = []
+    question, uploads = "", []
     for part in msg.iter_parts():
         if part.get_content_disposition() != "form-data":
             continue
-        field_name = part.get_param("name", header="content-disposition")
-        filename = part.get_filename()
+        field_name, filename = part.get_param("name", header="content-disposition"), part.get_filename()
         payload_bytes = part.get_payload(decode=True) or b""
         if filename:
             mime = part.get_content_type() or "application/octet-stream"
@@ -248,8 +211,7 @@ def _write_uploads_to_dir(uploads: list[dict], target_dir: Path) -> list[Path]:
             raise InvalidPredictionRequestError("Upload 'data' field must be a base64 string.")
         if not data_val:
             continue
-        raw_name = item.get("name")
-        mime_val = str(item.get("mime") or "image/jpeg")
+        raw_name, mime_val = item.get("name"), str(item.get("mime") or "image/jpeg")
         safe_name = _sanitize_filename(raw_name if isinstance(raw_name, str) else "", idx, mime_val)
         b64_payload = data_val.split(",", 1)[1] if ("," in data_val and data_val.startswith("data:")) else data_val
         try:
@@ -357,7 +319,7 @@ def _is_allowed_origin(origin: str | None) -> bool:
 def _verify_prediction_request_security(headers: Mapping[str, str]) -> str | None:
     if AGY_API_SECRET:
         provided_secret = _get_header_case_insensitive(headers, "X-Agy-Proxy-Secret")
-        if not provided_secret or not hmac.compare_digest(provided_secret.encode("utf-8"), AGY_API_SECRET.encode("utf-8")):
+        if not provided_secret or not hmac.compare_digest(provided_secret.encode(), AGY_API_SECRET.encode()):
             raise UnauthorizedPredictionRequestError("Unauthorized: valid proxy authentication secret is required.", internal_detail="Missing or invalid X-Agy-Proxy-Secret header")
     client_header = _get_header_case_insensitive(headers, "X-Lumen-Client")
     if client_header != REQUIRED_CLIENT_HEADER_VALUE:
@@ -388,8 +350,8 @@ def get_state_repo() -> LumenStateRepository:
     return STATE_REPO
 
 
-def _resolve_caller_account(headers: Mapping[str, str], repo: LumenStateRepository) -> str:
-    return repo.resolve_caller_from_headers(
+def _resolve_caller_context(headers: Mapping[str, str], repo: LumenStateRepository) -> CallerContext:
+    return repo.resolve_caller_context(
         cf_email=_get_header_case_insensitive(headers, "Cf-Access-Authenticated-User-Email"),
         account_header=_get_header_case_insensitive(headers, "X-Lumen-Account"),
         session_header=_get_header_case_insensitive(headers, "X-Lumen-Session"),
@@ -406,16 +368,25 @@ def _parse_json_object(body: bytes) -> dict:
     return payload
 
 
-def _handle_state_post(body: bytes, repo: LumenStateRepository, caller_account: str | None = None) -> dict:
+def _handle_state_post(
+    body: bytes, repo: LumenStateRepository, caller_ctx: CallerContext, *, captcha_attestation: str | None = None,
+) -> dict:
     payload = _parse_json_object(body)
     set_map, remove_list = payload.get("set") or {}, payload.get("remove") or []
     if not isinstance(set_map, dict) or not isinstance(remove_list, list):
         raise InvalidPredictionRequestError("Fields 'set' (object) and 'remove' (list) must have valid types.")
-    updated = repo.mutate_scoped_state(caller_account, set_map, [str(k) for k in remove_list], clear_all=bool(payload.get("clear_all")))
+    att = captcha_attestation or (str(payload.get("captchaAttestation") or "") if isinstance(payload.get("captchaAttestation"), str) else None)
+    try:
+        updated = repo.mutate_scoped_state(
+            caller_ctx.account_id, set_map, [str(k) for k in remove_list],
+            clear_all=bool(payload.get("clear_all")), caller_context=caller_ctx, captcha_attestation=att,
+        )
+    except PermissionError as exc:
+        raise ForbiddenRoleError(str(exc)) from exc
     return {"status": "ok", "updated": updated}
 
 
-def _handle_attachments_post(body: bytes, repo: LumenStateRepository, caller_account: str | None = "owner") -> dict:
+def _handle_attachments_post(body: bytes, repo: LumenStateRepository, caller_ctx: CallerContext) -> dict:
     payload = _parse_json_object(body)
     items: dict[str, str] = {}
     if isinstance(payload.get("attachments"), dict):
@@ -425,14 +396,18 @@ def _handle_attachments_post(body: bytes, repo: LumenStateRepository, caller_acc
     remove_list = payload.get("remove") or []
     if not isinstance(remove_list, list):
         raise InvalidPredictionRequestError("Field 'remove' must be a list.")
-    return {"status": "ok", "updated": repo.put_attachments(items, [str(k) for k in remove_list], account_id=caller_account)}
+    try:
+        updated = repo.put_attachments(items, [str(k) for k in remove_list], account_id=caller_ctx.account_id, caller_context=caller_ctx)
+    except PermissionError as exc:
+        raise ForbiddenRoleError(str(exc)) from exc
+    return {"status": "ok", "updated": updated}
 
 
 class AgyPredictionHandler(BaseHTTPRequestHandler):
     """HTTP request handler exposing Flowise-compatible `/api/v1/prediction/*`, auth, and persistence endpoints."""
 
     def _send_json(self, payload: dict, status: int = 200) -> None:
-        raw = json.dumps(payload).encode("utf-8")
+        raw = json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
@@ -441,12 +416,12 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
         if req_origin and _is_allowed_origin(req_origin):
             self.send_header("Access-Control-Allow-Origin", req_origin)
             self.send_header("Vary", "Origin")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Lumen-Client, X-Lumen-Account, X-Lumen-Session, X-Agy-Proxy-Secret")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Lumen-Client, X-Lumen-Account, X-Lumen-Session, X-Lumen-Captcha, X-Agy-Proxy-Secret")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         self.wfile.write(raw)
 
-    def do_OPTIONS(self) -> None:  # noqa: N802
+    def do_OPTIONS(self) -> None:
         raw_origin = self.headers.get("Origin", "")
         if raw_origin and not _is_allowed_origin(raw_origin):
             return self._send_json(build_error_envelope("forbidden_origin", "Forbidden: request origin is not authorized to access this service."), status=403)
@@ -460,43 +435,49 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/__vendor__/chart.js":
-            return self._send_bytes(CHART_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
+            return self._send_bytes(CHART_JS_SHIM.encode(), "application/javascript; charset=utf-8")
         if parsed.path in ("/__vendor__/pdf.min.js", "/__vendor__/pdf.worker.min.js"):
-            return self._send_bytes(PDF_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
+            return self._send_bytes(PDF_JS_SHIM.encode(), "application/javascript; charset=utf-8")
         if parsed.path == "/__vendor__/fonts.css":
             return self._send_bytes(b"/* local font shim */\n", "text/css; charset=utf-8")
         if parsed.path in ("/", "/health", "/api/v1/ping") or parsed.path.startswith("/api/v1/prediction/"):
             return self._send_json({"status": "ok", "engine": "agy", "model": AGY_MODEL}, status=200)
-        if parsed.path in ("/api/v1/state", "/api/v1/attachments", "/api/v1/auth/session"):
+        if parsed.path in ("/api/v1/state", "/api/v1/attachments", "/api/v1/auth/session", "/api/v1/auth/captcha-config"):
             try:
                 _verify_prediction_request_security(self.headers)
+                if parsed.path == "/api/v1/auth/captcha-config":
+                    return self._send_json({"ok": True, "provider": "recaptcha", "siteKey": os.environ.get("RECAPTCHA_SITE_KEY", "").strip()}, status=200)
                 repo = get_state_repo()
                 if parsed.path == "/api/v1/auth/session":
                     self._send_json(repo.resolve_session(cf_email=_get_header_case_insensitive(self.headers, "Cf-Access-Authenticated-User-Email"), account_header=_get_header_case_insensitive(self.headers, "X-Lumen-Account"), session_header=_get_header_case_insensitive(self.headers, "X-Lumen-Session")), status=200)
                 elif parsed.path == "/api/v1/state":
-                    caller_acc = _resolve_caller_account(self.headers, repo)
-                    self._send_json({"status": "ok", "state": repo.get_scoped_state(caller_acc)}, status=200)
+                    caller_ctx = _resolve_caller_context(self.headers, repo)
+                    self._send_json({"status": "ok", "state": repo.get_scoped_state(caller_ctx.account_id, caller_context=caller_ctx)}, status=200)
                 else:
-                    caller_acc = _resolve_caller_account(self.headers, repo)
+                    caller_ctx = _resolve_caller_context(self.headers, repo)
                     key = (parse_qs(parsed.query).get("key") or [""])[0]
-                    self._send_json({"status": "ok", "key": key, "data": repo.get_attachment(key, account_id=caller_acc)}, status=200)
+                    self._send_json({"status": "ok", "key": key, "data": repo.get_attachment(key, account_id=caller_ctx.account_id, caller_context=caller_ctx)}, status=200)
             except PredictionServiceError as exc:
                 self._send_json(build_error_envelope(exc.error_code, exc.public_message), status=exc.status_code)
             return
         self._send_json(build_error_envelope("not_found", "Endpoint not found."), status=404)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         parsed = urlparse(self.path)
         if not parsed.path.startswith("/api/"):
             return self._send_json(build_error_envelope("not_found", "Endpoint not found."), status=404)
         try:
-            _verify_prediction_request_security(self.headers)
+            origin = _verify_prediction_request_security(self.headers)
             content_len = _validate_content_length(self.headers.get("Content-Length"))
             body = self.rfile.read(content_len) if content_len > 0 else b""
             repo = get_state_repo()
+            if parsed.path == "/api/v1/auth/captcha/verify":
+                payload = _parse_json_object(body)
+                res = _verify_recaptcha_token(payload.get("token"), secret=os.environ.get("RECAPTCHA_SECRET_KEY", "").strip(), session_secret=repo._session_secret, origin=origin)
+                return self._send_json(res, status=int(res.get("status_code") or 200))
             if parsed.path in ("/api/v1/auth/login", "/api/v1/auth/password-reset/request", "/api/v1/auth/reset-request", "/api/v1/auth/password-reset/confirm", "/api/v1/auth/reset-confirm"):
                 payload = _parse_json_object(body)
                 if parsed.path == "/api/v1/auth/login":
@@ -506,22 +487,37 @@ class AgyPredictionHandler(BaseHTTPRequestHandler):
                 else:
                     res = repo.confirm_password_reset(payload.get("email"), payload.get("code"), payload.get("newPassword"))
                 return self._send_json(res, status=int(res.get("status_code") or 200))
-            caller_acc = _resolve_caller_account(self.headers, repo)
-            if parsed.path in ("/api/v1/auth/trial-reminder", "/api/v1/auth/trial-renew"):
+            caller_ctx = _resolve_caller_context(self.headers, repo)
+            if parsed.path in ("/api/v1/auth/trial-reminder", "/api/v1/auth/trial-renew", "/api/v1/auth/payment-method"):
                 payload = _parse_json_object(body)
-                fn = repo.send_trial_renewal_reminder if parsed.path.endswith("trial-reminder") else repo.process_trial_renewal
-                res = fn(payload.get("email"), caller_account=caller_acc)
+                if parsed.path == "/api/v1/auth/payment-method":
+                    res = repo.save_payment_method(
+                        payload.get("email"), caller_account=caller_ctx.account_id, caller_context=caller_ctx,
+                        card_holder_name=payload.get("cardHolderName", ""), card_brand=payload.get("cardBrand", "Card"),
+                        card_last4=payload.get("cardLast4", ""), card_expiry=payload.get("cardExpiry", ""),
+                        payment_method_token=payload.get("paymentMethodToken", ""), pay_now=payload.get("payNow", False),
+                    )
+                else:
+                    fn = repo.send_trial_renewal_reminder if parsed.path.endswith("trial-reminder") else repo.process_trial_renewal
+                    res = fn(payload.get("email"), caller_account=caller_ctx.account_id, caller_context=caller_ctx)
                 return self._send_json(res, status=403 if res.get("error") == "Forbidden." else int(res.get("status_code") or 200))
             if parsed.path in ("/api/v1/einvoice/submit", "/api/v1/einvoice/webhook", "/api/v1/einvoice/inbound"):
+                if not parsed.path.endswith("webhook") and caller_ctx.role in ("viewer", "unauthenticated"):
+                    raise ForbiddenRoleError("Read-only viewer role cannot submit or import e-invoices.")
                 payload = _parse_json_object(body)
-                res = repo.handle_einvoice_webhook(payload) if parsed.path.endswith("webhook") else (repo.receive_inbound_einvoice(payload, caller_account=caller_acc) if parsed.path.endswith("inbound") else repo.submit_einvoice(payload, caller_account=caller_acc))
+                try:
+                    res = repo.handle_einvoice_webhook(payload) if parsed.path.endswith("webhook") else (repo.receive_inbound_einvoice(payload, caller_account=caller_ctx.account_id, caller_context=caller_ctx) if parsed.path.endswith("inbound") else repo.submit_einvoice(payload, caller_account=caller_ctx.account_id, caller_context=caller_ctx))
+                except PermissionError as exc:
+                    raise ForbiddenRoleError(str(exc)) from exc
                 return self._send_json(res, status=int(res.get("status_code") or 200))
             if parsed.path == "/api/v1/state":
-                return self._send_json(_handle_state_post(body, repo, caller_acc), status=200)
+                return self._send_json(_handle_state_post(body, repo, caller_ctx, captcha_attestation=_get_header_case_insensitive(self.headers, "X-Lumen-Captcha") or None), status=200)
             if parsed.path == "/api/v1/attachments":
-                return self._send_json(_handle_attachments_post(body, repo, caller_acc), status=200)
-            if not repo.is_account_ai_enabled(caller_acc, raw_account_header=_get_header_case_insensitive(self.headers, "X-Lumen-Account")):
-                return self._send_json(build_error_envelope("plan_upgrade_required", "AI features require the Advance or Premium plan."), status=403)
+                return self._send_json(_handle_attachments_post(body, repo, caller_ctx), status=200)
+            if not parsed.path.startswith("/api/v1/prediction/"):
+                return self._send_json(build_error_envelope("not_found", "Endpoint not found."), status=404)
+            if not repo.is_account_ai_enabled(caller_ctx.account_id, raw_account_header=_get_header_case_insensitive(self.headers, "X-Lumen-Account")):
+                return self._send_json(build_error_envelope("plan_upgrade_required", "AI features require the Advance, Pro, or Managed Books plan."), status=403)
             content_type = self.headers.get("Content-Type", "")
             question, uploads = _parse_multipart_form_data(content_type, body) if "multipart/form-data" in content_type else _parse_json_prediction_request(body)
             self._send_json(run_agy_prediction(question=question, uploads=uploads), status=200)
@@ -542,5 +538,7 @@ def main() -> None:
         server.serve_forever()
     finally:
         server.server_close()
+
+
 if __name__ == "__main__":
     main()

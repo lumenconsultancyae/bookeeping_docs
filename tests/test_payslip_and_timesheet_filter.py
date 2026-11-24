@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import subprocess
-from pathlib import Path
 import unittest
-
+from pathlib import Path
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 WEB_ROOT = WORKSPACE_ROOT / "bookkeeping-tool"
@@ -298,7 +296,8 @@ class TestPayslipAndTimesheetEmployeeFilter(unittest.TestCase):
         let domLoadedFn = null;
         const makeEl = (id) => ({{
             id, value: '', innerHTML: '', textContent: '', hidden: false, disabled: false,
-            dataset: {{}}, style: {{}}, classList: {{ toggle() {{}} }},
+            children: [], dataset: {{}}, style: {{}}, classList: {{ toggle() {{}} }},
+            querySelector: () => null, querySelectorAll: () => [],
             setAttribute() {{}}, addEventListener() {{}}, focus() {{}}, reset() {{}}
         }});
         [
@@ -324,7 +323,10 @@ class TestPayslipAndTimesheetEmployeeFilter(unittest.TestCase):
             window: windowMock, document: documentMock, localStorage: windowMock.localStorage,
             URLSearchParams, console, Date, Math, Number, String, Object, Array, JSON
         }});
+        vm.runInContext(fs.readFileSync({json.dumps(str(WEB_ROOT / "render-slot.js"))}, 'utf8'), context);
         vm.runInContext(fs.readFileSync({json.dumps(str(WEB_ROOT / "welcome-plans.js"))}, 'utf8'), context);
+        vm.runInContext(fs.readFileSync({json.dumps(str(WEB_ROOT / "welcome-content.js"))}, 'utf8'), context);
+        vm.runInContext(fs.readFileSync({json.dumps(str(WEB_ROOT / "welcome-modals.js"))}, 'utf8'), context);
         vm.runInContext(fs.readFileSync({json.dumps(str(WEB_ROOT / "welcome.js"))}, 'utf8'), context);
         if (domLoadedFn) domLoadedFn();
         console.log(JSON.stringify({{
@@ -335,19 +337,21 @@ class TestPayslipAndTimesheetEmployeeFilter(unittest.TestCase):
         """
         result = run_node_script(script)
         plans = {p["id"]: p for p in result["plans"]}
-        self.assertEqual(plans["basic"]["monthly"], 50)
-        self.assertEqual(plans["advance"]["monthly"], 75)
-        self.assertEqual(plans["premium"]["monthly"], 100)
+        self.assertEqual(plans["basic"]["monthly"], 69)
+        self.assertEqual(plans["advance"]["monthly"], 129)
+        self.assertEqual(plans["premium"]["monthly"], 199)
+        self.assertEqual(plans["managed"]["monthly"], 1450)
         for pid in ("basic", "advance", "premium"):
-            self.assertIn("1 Month Free", plans[pid].get("promo", ""))
+            self.assertIn("15 Days Free", plans[pid].get("promo", ""))
             self.assertNotIn("paymentLink", plans[pid])
             self.assertNotIn(f'id="btnPay-{pid}"', result["plansHtml"])
-        self.assertEqual(result["plansHtml"].count("1 Month Free"), 3)
-        self.assertIn("Basic — AED 50 / month", result["selectHtml"])
+        self.assertEqual(result["plansHtml"].count("15 Days Free"), 3)
+        self.assertIn("Free Setup", result["plansHtml"])
+        self.assertIn("Basic — AED 69 / month", result["selectHtml"])
 
         admin_html = (WEB_ROOT / "admin.html").read_text(encoding="utf-8")
-        self.assertIn("Basic (AED 50)", admin_html)
-        self.assertIn("Basic — AED 50 / mo (30 inv)", admin_html)
+        self.assertIn("50 uploads / 50 customer invoices", admin_html)
+        self.assertIn("Basic — AED 69 / mo (50 / 50 inv)", admin_html)
         self.assertNotIn("AED 35", admin_html)
 
         i18n_js = (WEB_ROOT / "i18n.js").read_text(encoding="utf-8")
@@ -356,13 +360,13 @@ class TestPayslipAndTimesheetEmployeeFilter(unittest.TestCase):
             "6520 EOSB & Leave Expense",
             "Payslip",
             "All Employees",
-            "Basic — AED 50 / month (1 Month Free)",
+            "Basic — AED 69 / month (15 Days Free)",
         ):
             self.assertIn(f"'{key}':", i18n_js)
 
         for doc_rel in ("docs/product/prd-product-requirements.md", "docs/product/user-guide-and-release-notes.md"):
             doc_text = (DOCS_ROOT / doc_rel).read_text(encoding="utf-8")
-            self.assertIn("AED 50/mo", doc_text)
+            self.assertIn("AED 69/mo", doc_text)
             self.assertNotIn("AED 35/mo", doc_text)
         arch_text = (DOCS_ROOT / "docs/technical/architecture-and-execution-flow.md").read_text(encoding="utf-8")
         self.assertIn("38 standard accounts", arch_text)

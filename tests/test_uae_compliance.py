@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-import subprocess
 import unittest
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 APP_DIR = REPO_ROOT.parent / "bookkeeping-tool"
 
 
 def _read_index_html_bundle() -> str:
-    parts = [(APP_DIR / "index.html").read_text(encoding="utf-8")]
+    parts = [(APP_DIR / "index.html").read_text(encoding="utf-8"), (APP_DIR / "react-app.js").read_text(encoding="utf-8")]
     for path in sorted(APP_DIR.glob("views-*.js")):
         parts.append(path.read_text(encoding="utf-8"))
     return "\n".join(parts)

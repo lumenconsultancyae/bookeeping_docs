@@ -5,11 +5,10 @@ from __future__ import annotations
 import io
 import json
 import os
-from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import create_autospec, patch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -28,7 +27,11 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
     }
 
     def test_provision_py_main_and_live_provisioning_service_branches(self) -> None:
-        from deploy.config import ProvisioningSettings, resolve_aws_login_cache_credentials
+        import provision
+        from deploy.config import (
+            ProvisioningSettings,
+            resolve_aws_login_cache_credentials,
+        )
         from deploy.domain import (
             CloudflarePagesSpec,
             CloudflareTunnelSpec,
@@ -37,7 +40,6 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
             ProvisioningErrorCode,
         )
         from deploy.service import ProvisioningService
-        import provision
 
         err_no_ctx = ProvisioningError(ProvisioningErrorCode.BOOTSTRAP_ERROR, "Failed boot")
         self.assertEqual(err_no_ctx.to_dict(), {"error": {"code": "bootstrap_error", "message": "Failed boot"}})
@@ -222,6 +224,7 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
     def test_urllib_default_transports_zone_discovery_and_xml_namespaces(self) -> None:
         import urllib.error
         import urllib.request
+
         from deploy.domain import ProvisioningError
         from deploy.infrastructure import AwsEc2Client, CloudflareApiClient
 
@@ -234,7 +237,7 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
             def read(self) -> bytes:
                 return self._body
 
-            def __enter__(self) -> "FakeHttpResp":
+            def __enter__(self) -> FakeHttpResp:
                 return self
 
             def __exit__(self, *args: object) -> None:
@@ -451,9 +454,9 @@ class CloudflareAndAwsExtendedProvisioningTests(unittest.TestCase):
             self.assertEqual(accounts_after["acc-1"]["plan"], "basic")
             self.assertNotIn("acc-evil", accounts_after)
 
-            # New non-owner registration cannot self-assign premium plan without admin approval
+            # Unauthenticated self-registration cannot self-assign premium plan without admin approval
             repo.mutate_scoped_state(
-                "acc-new",
+                None,
                 set_items={
                     "lumen_accounts": json.dumps({
                         "acc-new": {

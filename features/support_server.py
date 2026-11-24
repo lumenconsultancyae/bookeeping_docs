@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,71 +22,27 @@ from urllib.parse import parse_qs, urlparse
 
 import agy_service
 from features.config import APP_SOURCE_DIR, HOST, PORT
+from vendor_shims import CHART_JS_SHIM
 
-CHART_JS_SHIM = """
+RECAPTCHA_JS_SHIM = """
 (function(window) {
-    class Chart {
-        constructor(ctx, config) {
-            this.ctx = ctx;
-            this.config = config || {};
-            this._renderCanvasPreview();
-        }
-        _renderCanvasPreview() {
-            try {
-                const canvas = this.ctx && this.ctx.canvas ? this.ctx.canvas : this.ctx;
-                if (!canvas || !canvas.getContext) return;
-                const parent = canvas.parentElement;
-                const w = canvas.width = Math.max(480, (parent && parent.clientWidth ? parent.clientWidth - 48 : 680));
-                const h = canvas.height = Math.max(210, (parent && parent.clientHeight ? parent.clientHeight - 48 : 240));
-                const c = canvas.getContext('2d');
-                c.clearRect(0, 0, w, h);
-                c.fillStyle = '#ffffff';
-                c.fillRect(0, 0, w, h);
-                const padL = 56, padR = 24, padT = 36, padB = 34;
-                const plotW = w - padL - padR;
-                const plotH = h - padT - padB;
-                c.strokeStyle = '#e4e7ec';
-                c.lineWidth = 1;
-                for (let g = 0; g <= 4; g++) {
-                    const y = padT + (plotH * g) / 4;
-                    c.beginPath();
-                    c.moveTo(padL, y);
-                    c.lineTo(w - padR, y);
-                    c.stroke();
-                }
-                const labels = (this.config.data && this.config.data.labels) || [];
-                const datasets = (this.config.data && this.config.data.datasets) || [];
-                datasets.forEach((ds, dIdx) => {
-                    const lx = w - padR - (datasets.length - dIdx) * 125;
-                    c.fillStyle = ds.backgroundColor || (dIdx === 0 ? '#067647' : '#b42318');
-                    c.fillRect(lx, 10, 10, 10);
-                    c.fillStyle = '#475467';
-                    c.font = '500 11px Inter, sans-serif';
-                    c.fillText(String(ds.label || (dIdx === 0 ? 'Cash In' : 'Cash Out')), lx + 15, 19);
-                });
-                const slotW = plotW / Math.max(labels.length, 1);
-                const barW = Math.min(28, Math.max(14, Math.floor(slotW / 3.2)));
-                labels.forEach((label, idx) => {
-                    const xCenter = padL + idx * slotW + slotW / 2;
-                    datasets.forEach((ds, dIdx) => {
-                        const val = Number((ds.data && ds.data[idx]) || 0);
-                        const barH = val > 0 ? Math.min(plotH - 12, Math.max(14, Math.log10(val + 10) * 38)) : 6;
-                        const bx = xCenter + (dIdx - (datasets.length - 1) / 2) * (barW + 6) - barW / 2;
-                        c.fillStyle = ds.backgroundColor || (dIdx === 0 ? '#067647' : '#b42318');
-                        c.fillRect(bx, padT + plotH - barH, barW, barH);
+    window.grecaptcha = {
+        render: function(el, opts) {
+            const container = typeof el === 'string' ? document.getElementById(el) : el;
+            if (container) {
+                container.innerHTML = '<button type="button" id="recaptchaStubBtn" class="btn btn-outline btn-sm">I\\'m not a robot</button>';
+                const btn = container.querySelector('#recaptchaStubBtn');
+                if (btn) {
+                    btn.addEventListener('click', function() {
+                        if (opts && typeof opts.callback === 'function') opts.callback('behave-local-captcha-token');
                     });
-                    c.fillStyle = '#475467';
-                    c.font = '500 11px Inter, sans-serif';
-                    c.textAlign = 'center';
-                    c.fillText(String(label), xCenter, h - 12);
-                });
-                c.textAlign = 'start';
-            } catch (e) {}
-        }
-        destroy() {}
-        update() { this._renderCanvasPreview(); }
-    }
-    window.Chart = Chart;
+                }
+            }
+            return 1;
+        },
+        reset: function() {},
+        getResponse: function() { return 'behave-local-captcha-token'; }
+    };
 })(window);
 """
 
@@ -306,7 +263,7 @@ def build_mock_ai_response(body_text: str) -> dict:
 class BookkeepingRequestHandler(BaseHTTPRequestHandler):
     """HTTP handler serving static app files, vendor shims, and mock AI endpoints."""
 
-    def log_message(self, format: str, *args) -> None:  # noqa: A002
+    def log_message(self, format: str, *args) -> None:
         return  # Silence per-request stdout noise during BDD test runs
 
     custom_api_handler = None
@@ -335,7 +292,7 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         parsed = urlparse(self.path)
         req_path = parsed.path
         if self._try_custom_api_handler():
@@ -346,19 +303,23 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
             return self._send_bytes(PDF_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
         if req_path == "/__vendor__/fonts.css":
             return self._send_bytes(b"/* local font shim */\n", "text/css; charset=utf-8")
+        if req_path == "/__vendor__/recaptcha.js":
+            return self._send_bytes(RECAPTCHA_JS_SHIM.encode("utf-8"), "application/javascript; charset=utf-8")
+        if req_path == "/api/v1/auth/captcha-config":
+            return self._send_bytes(json.dumps({"ok": True, "provider": "recaptcha", "siteKey": os.environ.get("RECAPTCHA_SITE_KEY", "").strip()}).encode("utf-8"), "application/json; charset=utf-8", status=200)
         if req_path == "/api/v1/auth/session":
             repo = agy_service.get_state_repo()
             payload = repo.resolve_session(cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"), account_header=self.headers.get("X-Lumen-Account"), session_header=self.headers.get("X-Lumen-Session"))
             return self._send_bytes(json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8", status=200)
         if req_path == "/api/v1/state":
             repo = agy_service.get_state_repo()
-            caller_acc = repo.resolve_caller_from_headers(cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"), account_header=self.headers.get("X-Lumen-Account"), session_header=self.headers.get("X-Lumen-Session"))
-            return self._send_bytes(json.dumps({"status": "ok", "state": repo.get_scoped_state(caller_acc)}).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            caller_ctx = repo.resolve_caller_context(cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"), account_header=self.headers.get("X-Lumen-Account"), session_header=self.headers.get("X-Lumen-Session"))
+            return self._send_bytes(json.dumps({"status": "ok", "state": repo.get_scoped_state(caller_ctx.account_id, caller_context=caller_ctx)}).encode("utf-8"), "application/json; charset=utf-8", status=200)
         if req_path == "/api/v1/attachments":
             repo = agy_service.get_state_repo()
-            caller_acc = repo.resolve_caller_from_headers(cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"), account_header=self.headers.get("X-Lumen-Account"), session_header=self.headers.get("X-Lumen-Session"))
+            caller_ctx = repo.resolve_caller_context(cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"), account_header=self.headers.get("X-Lumen-Account"), session_header=self.headers.get("X-Lumen-Session"))
             key = (parse_qs(parsed.query).get("key") or [""])[0]
-            return self._send_bytes(json.dumps({"status": "ok", "key": key, "data": repo.get_attachment(key, account_id=caller_acc)}).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            return self._send_bytes(json.dumps({"status": "ok", "key": key, "data": repo.get_attachment(key, account_id=caller_ctx.account_id, caller_context=caller_ctx)}).encode("utf-8"), "application/json; charset=utf-8", status=200)
 
         if req_path in ("/", "/index.html"):
             index_file = APP_SOURCE_DIR / "index.html"
@@ -393,6 +354,10 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
                 "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap",
                 "/__vendor__/fonts.css",
             )
+            html = html.replace(
+                "https://www.google.com/recaptcha/api.js?render=explicit",
+                "/__vendor__/recaptcha.js",
+            )
             self._send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
             return
 
@@ -425,7 +390,7 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
         mime_type, _ = mimetypes.guess_type(str(file_path))
         self._send_bytes(file_path.read_bytes(), mime_type or "application/octet-stream")
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         parsed = urlparse(self.path)
         content_len = int(self.headers.get("Content-Length", "0"))
         body_bytes = self.rfile.read(content_len) if content_len > 0 else b""
@@ -455,49 +420,79 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
             )
             self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=int(res.get("status_code") or 200))
             return
-        if parsed.path == "/api/v1/auth/trial-reminder":
+        if parsed.path == "/api/v1/auth/captcha/verify":
             repo = agy_service.get_state_repo()
-            caller_acc = repo.resolve_caller_from_headers(
+            req_obj = agy_service._parse_json_object(body_bytes)
+            res = agy_service._verify_recaptcha_token(
+                req_obj.get("token"),
+                secret=os.environ.get("RECAPTCHA_SECRET_KEY", "").strip(),
+                session_secret=repo._session_secret,
+                origin=self.headers.get("Origin"),
+            )
+            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=int(res.get("status_code") or 200))
+            return
+        if parsed.path in ("/api/v1/auth/trial-reminder", "/api/v1/auth/trial-renew", "/api/v1/auth/payment-method"):
+            repo = agy_service.get_state_repo()
+            caller_ctx = repo.resolve_caller_context(
                 cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
                 account_header=self.headers.get("X-Lumen-Account"),
                 session_header=self.headers.get("X-Lumen-Session"),
             )
             req_obj = agy_service._parse_json_object(body_bytes)
-            res = repo.send_trial_renewal_reminder(req_obj.get("email"), caller_account=caller_acc)
+            if parsed.path == "/api/v1/auth/payment-method":
+                res = repo.save_payment_method(
+                    req_obj.get("email"),
+                    caller_account=caller_ctx.account_id,
+                    caller_context=caller_ctx,
+                    card_holder_name=req_obj.get("cardHolderName", ""),
+                    card_brand=req_obj.get("cardBrand", "Card"),
+                    card_last4=req_obj.get("cardLast4", ""),
+                    card_expiry=req_obj.get("cardExpiry", ""),
+                    payment_method_token=req_obj.get("paymentMethodToken", ""),
+                    pay_now=req_obj.get("payNow", False),
+                )
+            elif parsed.path == "/api/v1/auth/trial-reminder":
+                res = repo.send_trial_renewal_reminder(req_obj.get("email"), caller_account=caller_ctx.account_id, caller_context=caller_ctx)
+            else:
+                res = repo.process_trial_renewal(req_obj.get("email"), caller_account=caller_ctx.account_id, caller_context=caller_ctx)
             self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=403 if res.get("error") == "Forbidden." else int(res.get("status_code") or 200))
             return
-        if parsed.path == "/api/v1/auth/trial-renew":
+        if parsed.path in ("/api/v1/state", "/api/v1/attachments"):
             repo = agy_service.get_state_repo()
-            caller_acc = repo.resolve_caller_from_headers(
+            caller_ctx = repo.resolve_caller_context(
                 cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
                 account_header=self.headers.get("X-Lumen-Account"),
                 session_header=self.headers.get("X-Lumen-Session"),
             )
-            req_obj = agy_service._parse_json_object(body_bytes)
-            res = repo.process_trial_renewal(req_obj.get("email"), caller_account=caller_acc)
-            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=403 if res.get("error") == "Forbidden." else int(res.get("status_code") or 200))
+            try:
+                if parsed.path == "/api/v1/state":
+                    res = agy_service._handle_state_post(body_bytes, repo, caller_ctx, captcha_attestation=self.headers.get("X-Lumen-Captcha") or None)
+                else:
+                    res = agy_service._handle_attachments_post(body_bytes, repo, caller_ctx)
+                self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            except agy_service.PredictionServiceError as exc:
+                err_env = agy_service.build_error_envelope(exc.error_code, exc.public_message)
+                self._send_bytes(json.dumps(err_env).encode("utf-8"), "application/json; charset=utf-8", status=exc.status_code)
             return
-        if parsed.path == "/api/v1/state":
+        if parsed.path in ("/api/v1/einvoice/submit", "/api/v1/einvoice/webhook", "/api/v1/einvoice/inbound"):
             repo = agy_service.get_state_repo()
-            caller_acc = repo.resolve_caller_from_headers(
+            caller_ctx = repo.resolve_caller_context(
                 cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
                 account_header=self.headers.get("X-Lumen-Account"),
                 session_header=self.headers.get("X-Lumen-Session"),
             )
-            res = agy_service._handle_state_post(body_bytes, repo, caller_acc)
-            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=200)
+            if not parsed.path.endswith("webhook") and caller_ctx.role in ("viewer", "unauthenticated"):
+                err_env = agy_service.build_error_envelope("forbidden", "Read-only viewer role cannot submit or import e-invoices.")
+                self._send_bytes(json.dumps(err_env).encode("utf-8"), "application/json; charset=utf-8", status=403)
+                return
+            payload = agy_service._parse_json_object(body_bytes)
+            try:
+                res = repo.handle_einvoice_webhook(payload) if parsed.path.endswith("webhook") else (repo.receive_inbound_einvoice(payload, caller_account=caller_ctx.account_id, caller_context=caller_ctx) if parsed.path.endswith("inbound") else repo.submit_einvoice(payload, caller_account=caller_ctx.account_id, caller_context=caller_ctx))
+                self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=int(res.get("status_code") or 200))
+            except PermissionError as exc:
+                self._send_bytes(json.dumps(agy_service.build_error_envelope("forbidden", str(exc))).encode("utf-8"), "application/json; charset=utf-8", status=403)
             return
-        if parsed.path == "/api/v1/attachments":
-            repo = agy_service.get_state_repo()
-            caller_acc = repo.resolve_caller_from_headers(
-                cf_email=self.headers.get("Cf-Access-Authenticated-User-Email"),
-                account_header=self.headers.get("X-Lumen-Account"),
-                session_header=self.headers.get("X-Lumen-Session"),
-            )
-            res = agy_service._handle_attachments_post(body_bytes, repo, caller_acc)
-            self._send_bytes(json.dumps(res).encode("utf-8"), "application/json; charset=utf-8", status=200)
-            return
-        if parsed.path.startswith("/api/"):
+        if parsed.path.startswith("/api/v1/prediction/"):
             if "dogs_only" in body_text or "non_invoice_dog" in body_text:
                 err_obj = {
                     "error": {"code": "invalid_invoice_document", "message": "The uploaded PDF only contains photos of dogs and is not a valid invoice."},
@@ -513,7 +508,8 @@ class BookkeepingRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
-        self._send_bytes(b'{"status":"ok"}', "application/json; charset=utf-8", status=200)
+        err_env = agy_service.build_error_envelope("not_found", "Endpoint not found.")
+        self._send_bytes(json.dumps(err_env).encode("utf-8"), "application/json; charset=utf-8", status=404)
 
 
 def is_port_listening(host: str, port: int) -> bool:

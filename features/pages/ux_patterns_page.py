@@ -21,6 +21,7 @@ class UxPatternsPage(BasePage):
             JSON.parse(arguments[0]).forEach((name, i) => list.push({ name, trn: String(100000000000000 + i),
                 address: 'Business Bay, Dubai', email: '', phone: '', terms: 30 }));
             localStorage.setItem('bookkeeping_customers', JSON.stringify(list));
+            if (window.LumenProfiles && typeof window.LumenProfiles.flushSync === 'function') return window.LumenProfiles.flushSync();
             """,
             json.dumps(names),
         )
@@ -36,6 +37,7 @@ class UxPatternsPage(BasePage):
                 entityName: 'UX Seed', description, drAcc: '6000 Rent Expense', crAcc: '1000 Cash',
                 subtotal: 100 + i, discount: 0, tax: 0, total: 100 + i, status: 'posted' }));
             localStorage.setItem('bookkeeping_history_v2', JSON.stringify(history));
+            if (window.LumenProfiles && typeof window.LumenProfiles.flushSync === 'function') return window.LumenProfiles.flushSync();
             """,
             json.dumps(descriptions),
         )

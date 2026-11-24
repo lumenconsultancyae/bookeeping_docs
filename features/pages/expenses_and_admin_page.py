@@ -209,6 +209,25 @@ class ExpensesAndAdminPage(BasePage):
         self.click_id("btnToggleAutoRenew")
         return self.get_text_by_id("planSettingsCard")
 
+    def save_payment_card_in_settings(
+        self,
+        *,
+        card_holder: str = "Lumen Advisory Client",
+        card_number: str = "4242 4242 4242 4242",
+        card_expiry: str = "12/28",
+        card_cvv: str = "123",
+    ) -> str:
+        """Open `#trialCardRequiredModal` from Settings, submit deferred card details, and return `#planSettingsCard` text."""
+        self.click_id("btnEnterPaymentCard")
+        self.wait_until(lambda p: p.locator("#trialCardModalForm").is_visible())
+        self.fill_input("trialModalCardName", card_holder)
+        self.fill_input("trialModalCardNumber", card_number)
+        self.fill_input("trialModalCardExpiry", card_expiry)
+        self.fill_input("trialModalCardCvv", card_cvv)
+        self.click_id("btnTrialCardSubmit")
+        self.wait_until(lambda p: "4242" in p.locator("#planCardOnFile").inner_text())
+        return self.get_text_by_id("planSettingsCard")
+
     def trigger_admin_trial_reminder_and_auto_deduct(self, company_name: str) -> str:
         """Click `[data-send-reminder]` and `[data-auto-charge]` for `company_name` in `/admin` and return updated table text."""
         self.evaluate_script(

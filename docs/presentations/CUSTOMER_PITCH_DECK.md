@@ -16,15 +16,15 @@ This directory contains the `1920x1080` customer pitch slide deck (`slide_01_*.p
 
 ## 2. Presentation Slides (`1920x1080`)
 
-### Slide 1 — Bilingual (EN / AR RTL) Cloud Onboarding & 1-Month Free Trial Tiers
-![Slide 1: Bilingual (EN / AR RTL) Cloud Onboarding & 1-Month Free Trial Tiers](slide_01_welcome_onboarding_bilingual.png)
-- **Key Customer Value**: Purpose-built UAE SME cloud accounting suite with transparent monthly/annual pricing (**Basic AED 50**, **Advance AED 75**, **Premium AED 100**), **1 Month Free Trial** across all plans, built-in UAE PDPL legal compliance modals, and instant one-click switching between **English (LTR)** and **Arabic (RTL)** across all 26 modules.
+### Slide 1 — Bilingual (EN / AR RTL) Cloud Onboarding & 15-Day Free Trial Tiers
+![Slide 1: Bilingual (EN / AR RTL) Cloud Onboarding & 15-Day Free Trial Tiers](slide_01_welcome_onboarding_bilingual.png)
+- **Key Customer Value**: Purpose-built UAE SME cloud accounting suite with transparent monthly/annual pricing (**Basic AED 69**, **Advance AED 129**, **Pro AED 199**, plus **Managed Books From AED 1,450**), **15 Days Free** trial (no credit card required upfront) across self-serve plans and **Free Setup** for Managed Books, built-in UAE PDPL legal compliance modals, and instant one-click switching between **English (LTR)** and **Arabic (RTL)** across all 26 modules.
 
 ---
 
-### Slide 2 — 1-Month Trial Card Capture, 3x Password Lockout, Email Reset & Super-Admin Console
-![Slide 2: 1-Month Trial Card Capture, 3x Lockout, Email Reset & Admin Console](slide_02_trial_billing_auth_security.png)
-- **Key Customer Value**: Frictionless 1-month free trial onboarding with PCI-safe card tokenization (storing only card brand, last 4 digits, expiry, and token), self-service **Cancel / Resume Auto-Renewal** in Settings (`#btnToggleAutoRenew`), 120,000-iteration PBKDF2-SHA256 authentication with **3-attempt password lockout**, CSPRNG **6-digit email password reset**, online-only cloud state (`Cache-Control: no-store`, zero local browser IndexedDB attachment residue), and a full **Super-Admin Console (`/admin`)** for MRR tracking, upgrade approvals, trial renewal reminders, and automated renewal deductions.
+### Slide 2 — Deferred Trial Card Capture, 3x Password Lockout, Email Reset & Super-Admin Console
+![Slide 2: Deferred Trial Card Capture, 3x Lockout, Email Reset & Admin Console](slide_02_trial_billing_auth_security.png)
+- **Key Customer Value**: Frictionless 15-day free trial onboarding with Google reCAPTCHA v2 verification and deferred PCI-safe card tokenization (storing only card brand, last 4 digits, expiry, and token), self-service **Cancel / Resume Auto-Renewal** in Settings (`#btnToggleAutoRenew`), team roles (`Admin`, `Accountant`, `Viewer`), 120,000-iteration PBKDF2-SHA256 authentication with **3-attempt password lockout**, CSPRNG **6-digit email password reset**, online-only cloud state (`Cache-Control: no-store`, zero local browser IndexedDB attachment residue), and a full **Super-Admin Console (`/admin`)** for MRR tracking, upgrade approvals, trial renewal reminders, and automated renewal deductions.
 
 ---
 
@@ -54,7 +54,7 @@ This directory contains the `1920x1080` customer pitch slide deck (`slide_01_*.p
 
 ### Slide 7 — AI Multi-Line Document Extraction & Playwright Browser Verification
 ![Slide 7: AI Multi-Line Document Extraction & Playwright E2E Verification](slide_07_ai_ocr_and_playwright_e2e.png)
-- **Key Customer Value**: Built-in **AI Document Extraction (`agy_service.py`)** for multi-line PDF Supplier Tax Invoices, Customer Invoices, Petty Cash Receipts, Bank Statements, and 15-Digit UAE Vendor TRN Camera Receipts, backed by **117 automated unit & security tests** and **42 Playwright Chromium BDD end-to-end scenarios (372 steps)**.
+- **Key Customer Value**: Built-in **AI Document Extraction (`agy_service.py`)** for multi-line PDF Supplier Tax Invoices, Customer Invoices, Petty Cash Receipts, Bank Statements, and 15-Digit UAE Vendor TRN Camera Receipts, backed by **227 automated unit & security tests** and **47 Playwright Chromium BDD end-to-end scenarios (418 steps)** across **8 features**.
 
 ---
 

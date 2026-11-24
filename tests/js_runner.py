@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import atexit
 import os
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 _PLAYWRIGHT = None
 _BROWSER = None
@@ -221,7 +221,15 @@ def _get_playwright_page():
 def run_node_script(node_script: str, app_dir: Path) -> subprocess.CompletedProcess[str]:
     """Execute a Node-style CommonJS test script via `node` or Headless Chromium V8."""
     node_bin = shutil.which("node")
-    if node_bin and "vm.runInContext" not in node_script and "return (" not in node_script:
+    if (
+        node_bin
+        and "vm.runInContext" not in node_script
+        and "return (" not in node_script
+        and ".ts" not in node_script
+        and "vitest" not in node_script
+        and "renderSlot" not in node_script
+        and "innerHTML" not in node_script
+    ):
         return subprocess.run(
             [node_bin, "-e", node_script],
             env={**os.environ, "APP_DIR": str(app_dir)},
